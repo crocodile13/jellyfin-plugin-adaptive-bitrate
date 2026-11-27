@@ -16,8 +16,12 @@ public sealed class GovernorOptions
     /// <summary>Secondes au moins entre deux changements (sauf une descente demandée par le lecteur : toujours immédiate).</summary>
     public double MinChangeSeconds { get; set; } = 10;
 
-    /// <summary>Descendre d'avance quand le débit mesuré ne suffit plus, avant que le tampon du lecteur ne se vide.</summary>
-    public bool AnticipateDown { get; set; } = true;
+    /// <summary>
+    /// Descendre d'avance quand le débit mesuré ne suffit plus, avant que le tampon du lecteur ne se vide. Coupé par défaut :
+    /// sur le banc (lien bridé à 1,6 Mb/s), la mesure du serveur réagit après le lecteur et surestime le débit quand les
+    /// segments sont petits (tampons du système) ; elle ne s'est jamais déclenchée.
+    /// </summary>
+    public bool AnticipateDown { get; set; }
 
     /// <summary>Marge de débit : une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge.</summary>
     public double Margin { get; set; } = 1.25;

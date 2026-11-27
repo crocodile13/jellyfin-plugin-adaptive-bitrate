@@ -15,11 +15,13 @@ Quality that follows the network, without a cut. Jellyfin measures the connectio
 
 ## How it works
 
-- When Jellyfin builds an HLS playlist, I add lower qualities under the one it chose (by default 4, each at 60 % of the bitrate above, down to 700 kb/s, with a picture size that fits the bitrate).
+- When Jellyfin builds an HLS playlist, I add lower qualities under the one it chose, always down to 700 kb/s, in regular steps (each at least half the bitrate above, 4 at most), with a picture size that fits the bitrate.
 - **Each quality is produced by Jellyfin itself**, with the same audio track, the same subtitles (burned-in ones too) and the same playback session: only the bitrate and picture size change.
 - **The player switches by itself**: hls.js in the browser, ExoPlayer on Android, AVPlayer on Apple devices. It loads and buffers the new quality *before* switching, at a segment boundary: no cut, no restart, the sound and subtitles go on.
 - **A quality nobody uses costs nothing**: it is only encoded when a player switches to it, and Jellyfin stops the previous encoding as soon as the new one starts.
 - Optional: send remote players through the adaptive stream instead of playing the file directly (the video is copied as is while the network keeps up, and only transcoded when the player steps down).
+- Optional: **server control**. The server times the sending of every segment and can wait before letting the quality go back up after a drop (30 s by default): on a network going up and down, a quarter fewer quality changes, without more stalls (measured in the browser; off by default until checked on TV apps).
+- **Diagnostic overlay** (off by default): during playback in the browser, the quality downloaded, the bitrate actually received, the buffer, the picture displayed, dropped frames and the latest changes.
 
 Every switch is checked on a real Jellyfin in CI, on the segments themselves (the next quality starts exactly where the previous one ended, on a key frame, with the same audio) and in Google Chrome with the network throttled during playback.
 
@@ -37,10 +39,12 @@ Every switch is checked on a real Jellyfin in CI, on the segments themselves (th
 |---|---|---|
 | Players concerned | outside the local network | the local network is almost always enough; "all" helps with weak Wi-Fi or powerline |
 | Lower qualities offered | 4 | how many qualities under the starting one (0 = none) |
-| Gap between two qualities | 0.6 | each quality has this share of the bitrate above |
+| Maximum gap between two qualities | 0.5 | each quality has at least this share of the bitrate above; the ladder always reaches the minimum |
 | Minimum video bitrate | 700 kb/s | no quality below |
 | Higher qualities offered | 0 | above the starting quality, when the network improves (never beyond the file; exceeds the player's own limit) |
 | Adaptive stream instead of direct play | off | remote players get the adaptive stream instead of the file (experimental) |
+| Server control | off | wait before going back up (30 s), minimum gap between changes (10 s), bitrate margin (1.25), optional step-down ahead |
+| Diagnostic overlay | off | administrators only, or everyone |
 | Excluded apps | none | apps that keep Jellyfin's stream as is |
 
 More in the [wiki](https://github.com/crocodile13/jellyfin-plugin-adaptive-bitrate/wiki).
