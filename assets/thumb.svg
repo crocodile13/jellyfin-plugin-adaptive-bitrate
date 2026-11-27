@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576">
+  <title>Adaptive Bitrate</title>
+  <defs><radialGradient id="bgw" cx="0.3" cy="0.45" r="0.8"><stop offset="0" stop-color="#262d57"/><stop offset="1" stop-color="#0d1122"/></radialGradient></defs>
+  <rect width="1024" height="576" fill="url(#bgw)"/>
+  <g transform="translate(40 58) scale(0.88)">
+    <image href="logo.svg" width="512" height="512"/>
+  </g>
+  <text x="530" y="270" fill="#ffffff" font-family="Noto Sans, DejaVu Sans, sans-serif" font-size="64" font-weight="700">Adaptive</text>
+  <text x="530" y="350" fill="#ffffff" font-family="Noto Sans, DejaVu Sans, sans-serif" font-size="64" font-weight="700">Bitrate</text>
+  <text x="532" y="410" fill="#9aa6d8" font-family="Noto Sans, DejaVu Sans, sans-serif" font-size="28">Quality that follows the network</text>
+</svg>

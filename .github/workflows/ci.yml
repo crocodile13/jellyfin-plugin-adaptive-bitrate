@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Version consistency (meta.json, csproj, manifest.json)
+        run: |
+          META=$(jq -r .version meta.json)
+          CSPROJ=$(grep -oP '<Version>\K[^<]+' src/Jellyfin.Plugin.AdaptiveBitrate/Jellyfin.Plugin.AdaptiveBitrate.csproj)
+          echo "meta=$META csproj=$CSPROJ"
+          test "$META" = "$CSPROJ"
+          echo "$META" | grep -qE '^1\.[0-9]+\.[0-9]+\.0$'
+          # catalogue : vide avant la première version ; sinon la première entrée est la version en cours, son changelog
+          # commence par « 1.MINEUR.CORRECTIF », versions strictement décroissantes, toute entrée sous la première publiée
+          if [ "$(jq '.[0].versions | length' manifest.json)" != 0 ]; then
+            test "$(jq -r '.[0].versions[0].version' manifest.json)" = "$META"
+            jq -e --arg p "${META%.0}" '.[0].versions[0].changelog | startswith($p)' manifest.json > /dev/null
+            python3 - <<'PY'
+          import json
+          v = json.load(open("manifest.json"))[0]["versions"]
+          key = lambda e: tuple(int(x) for x in e["version"].split("."))
+          assert all(key(a) > key(b) for a, b in zip(v, v[1:])), "versions not strictly decreasing"
+          bad = [e["version"] for e in v[1:] if not (e["sourceUrl"] and e["checksum"] and e["timestamp"])]
+          assert not bad, f"unpublished entries below the top one: {bad}"
+          PY
+          fi
+
+      - name: Jellyfin compatibility window (compat.json, every place that repeats it)
+        run: python tools/compat.py check
+
+      - name: Build, test and package
+        run: ./build.sh
+
+      - name: Build against the latest Jellyfin 12 packages
+        # The plugin targets the oldest supported version (targetAbi); this catches APIs removed or
+        # changed since then (obsolete members fail the build: warnings are errors).
+        run: |
+          V=$(curl -fsS https://api.nuget.org/v3-flatcontainer/jellyfin.controller/index.json | jq -r '.versions[]' | grep -E '^12\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "Jellyfin.Controller $V"
+          test -n "$V"
+          dotnet build src/Jellyfin.Plugin.AdaptiveBitrate -c Release -nologo -p:JellyfinVersion=$V -o "$RUNNER_TEMP/latest"
+
+      - name: Settings page tests (jsdom)
+        run: cd tests/client && npm install --no-save --no-package-lock --silent jsdom@24.1.3 && node configpage.test.mjs
+
+      - name: Integration scripts compile
+        run: python -m py_compile tests/integration/abr.py tools/compat.py
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AdaptiveBitrate-build
+          path: out/
+          retention-days: 14

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Adaptive Bitrate</title>
+</head>
+<body>
+    <div id="AdaptiveBitrateConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox,emby-textarea">
+        <div data-role="content">
+            <div class="content-primary">
+                <style>
+                    /* mise en page seulement : couleurs, polices et composants sont ceux de Jellyfin (thème compris) */
+                    #AdaptiveBitrateConfigPage form { max-width: none; }
+                    #AdaptiveBitrateConfigPage .abr-sub { opacity: .75; font-size: .9em; margin: 0 0 1em; max-width: 60em; }
+                    #AdaptiveBitrateConfigPage .abr-box { border-radius: 8px; padding: 1em 1.2em; margin-bottom: 1.2em; background: color-mix(in srgb, currentColor 5%, transparent); }
+                    #AdaptiveBitrateConfigPage .abr-box h3 { margin: 0 0 .4em; }
+                    #AdaptiveBitrateConfigPage .abr-box > p { opacity: .75; font-size: .88em; margin: 0 0 .9em; max-width: 60em; }
+                    #AdaptiveBitrateConfigPage .abr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 2em; align-items: start; }
+                    #AdaptiveBitrateConfigPage .abr-why { display: block; font-size: .8em; font-style: italic; opacity: .7; }
+                    #AdaptiveBitrateConfigPage .abr-off { opacity: .5; }
+                    #AdaptiveBitrateConfigPage table { border-collapse: collapse; width: 100%; font-size: .9em; }
+                    #AdaptiveBitrateConfigPage th, #AdaptiveBitrateConfigPage td { text-align: left; padding: .35em .6em; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+                    #AdaptiveBitrateConfigPage .abr-ok { color: #4caf50; }
+                    #AdaptiveBitrateConfigPage .abr-warn { color: #ff9800; }
+                </style>
+                <div class="verticalSection">
+                    <h2 class="sectionTitle">Adaptive Bitrate</h2>
+                    <p class="abr-sub" data-t="Une vraie échelle de qualités dans les flux de Jellyfin : quand le réseau faiblit, le lecteur passe à une qualité plus basse sans coupure, et remonte quand il revient. La nouvelle qualité est chargée avant le changement, à la limite d'un segment, avec la même piste audio et les mêmes sous-titres.">Une vraie échelle de qualités dans les flux de Jellyfin : quand le réseau faiblit, le lecteur passe à une qualité plus basse sans coupure, et remonte quand il revient. La nouvelle qualité est chargée avant le changement, à la limite d'un segment, avec la même piste audio et les mêmes sous-titres.</p>
+                </div>
+
+                <div class="abr-box">
+                    <h3 data-t="État">État</h3>
+                    <p id="abrHealth"></p>
+                    <div id="abrSessions"></div>
+                </div>
+
+                <form id="abrForm" novalidate>
+                    <div class="abr-box">
+                        <h3 data-t="Échelle de qualités">Échelle de qualités</h3>
+                        <p data-t="Sous la qualité que Jellyfin choisit au début de la lecture, des qualités plus basses sont proposées au lecteur. Une qualité qui ne sert pas ne coûte rien : elle n'est encodée que si le lecteur y passe.">Sous la qualité que Jellyfin choisit au début de la lecture, des qualités plus basses sont proposées au lecteur. Une qualité qui ne sert pas ne coûte rien : elle n'est encodée que si le lecteur y passe.</p>
+                        <div class="abr-grid">
+                            <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="abrEnabled"><span data-t="Plugin actif">Plugin actif</span></label>
+                            <div class="selectContainer" data-key="Scope">
+                                <label class="selectLabel" for="abrScope" data-t="Lecteurs concernés">Lecteurs concernés</label>
+                                <select is="emby-select" id="abrScope" class="emby-select-withcolor emby-select">
+                                    <option value="Remote" data-t="hors du réseau local">hors du réseau local</option>
+                                    <option value="All" data-t="tous (réseau local compris)">tous (réseau local compris)</option>
+                                </select>
+                                <div class="fieldDescription" data-t="Le réseau local suffit presque toujours ; « tous » aide avec un Wi-Fi faible ou du CPL. Par défaut : hors du réseau local.">Le réseau local suffit presque toujours ; « tous » aide avec un Wi-Fi faible ou du CPL. Par défaut : hors du réseau local.</div>
+                            </div>
+                            <div class="inputContainer" data-key="MaxRungs">
+                                <label class="inputLabel" for="abrMaxRungs" data-t="Qualités plus basses proposées">Qualités plus basses proposées</label>
+                                <input is="emby-input" type="number" id="abrMaxRungs" min="0" max="8" step="1">
+                                <div class="fieldDescription" data-t="Nombre maximal de qualités sous celle de départ. 0 = aucune. Par défaut : 4.">Nombre maximal de qualités sous celle de départ. 0 = aucune. Par défaut : 4.</div>
+                            </div>
+                            <div class="inputContainer" data-key="Step">
+                                <label class="inputLabel" for="abrStep" data-t="Écart entre deux qualités">Écart entre deux qualités</label>
+                                <input is="emby-input" type="number" id="abrStep" min="0.3" max="0.9" step="0.05">
+                                <div class="fieldDescription" data-t="Chaque qualité a ce rapport du débit de celle du dessus (0,6 = 60 %). Plus haut : des marches plus douces mais plus nombreuses. Par défaut : 0,6.">Chaque qualité a ce rapport du débit de celle du dessus (0,6 = 60 %). Plus haut : des marches plus douces mais plus nombreuses. Par défaut : 0,6.</div>
+                            </div>
+                            <div class="inputContainer" data-key="MinBitrateKbps">
+                                <label class="inputLabel" for="abrMinBitrateKbps" data-t="Débit vidéo minimal (kb/s)">Débit vidéo minimal (kb/s)</label>
+                                <input is="emby-input" type="number" id="abrMinBitrateKbps" min="100" max="50000" step="50">
+                                <div class="fieldDescription" data-t="Aucune qualité en dessous : l'image n'en vaudrait plus la peine. Par défaut : 700.">Aucune qualité en dessous : l'image n'en vaudrait plus la peine. Par défaut : 700.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="abr-box">
+                        <h3 data-t="Remonter au-dessus du départ">Remonter au-dessus du départ</h3>
+                        <p data-t="Jellyfin mesure le réseau une fois, au début de la lecture. S'il s'améliore ensuite, des qualités plus hautes peuvent être proposées, jamais au-delà du fichier. Elles dépassent le débit maximal réglé dans le lecteur : à laisser à 0 si vos utilisateurs le règlent pour économiser leurs données.">Jellyfin mesure le réseau une fois, au début de la lecture. S'il s'améliore ensuite, des qualités plus hautes peuvent être proposées, jamais au-delà du fichier. Elles dépassent le débit maximal réglé dans le lecteur : à laisser à 0 si vos utilisateurs le règlent pour économiser leurs données.</p>
+                        <div class="abr-grid">
+                            <div class="inputContainer" data-key="RungsAbove">
+                                <label class="inputLabel" for="abrRungsAbove" data-t="Qualités plus hautes proposées">Qualités plus hautes proposées</label>
+                                <input is="emby-input" type="number" id="abrRungsAbove" min="0" max="3" step="1">
+                                <div class="fieldDescription" data-t="0 = aucune (le lecteur ne dépasse jamais la qualité de départ). Par défaut : 0.">0 = aucune (le lecteur ne dépasse jamais la qualité de départ). Par défaut : 0.</div>
+                            </div>
+                            <div class="inputContainer" data-key="AboveCapKbps">
+                                <label class="inputLabel" for="abrAboveCapKbps" data-t="Plafond des qualités plus hautes (kb/s)">Plafond des qualités plus hautes (kb/s)</label>
+                                <input is="emby-input" type="number" id="abrAboveCapKbps" min="0" max="400000" step="500">
+                                <div class="fieldDescription" data-t="0 = le débit du fichier. Par défaut : 0.">0 = le débit du fichier. Par défaut : 0.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="abr-box">
+                        <h3 data-t="Lecture directe">Lecture directe</h3>
+                        <p data-t="Un fichier lu directement n'a qu'une qualité : si le réseau faiblit, l'image s'arrête. Cette option fait passer les lecteurs concernés par le flux adaptatif ; la vidéo y est copiée telle quelle tant que le réseau suit (presque sans calcul pour le serveur), et transcodée seulement quand le lecteur descend.">Un fichier lu directement n'a qu'une qualité : si le réseau faiblit, l'image s'arrête. Cette option fait passer les lecteurs concernés par le flux adaptatif ; la vidéo y est copiée telle quelle tant que le réseau suit (presque sans calcul pour le serveur), et transcodée seulement quand le lecteur descend.</p>
+                        <div class="abr-grid">
+                            <label class="checkboxContainer" data-key="PreferAdaptive"><input type="checkbox" is="emby-checkbox" id="abrPreferAdaptive"><span data-t="Flux adaptatif plutôt que lecture directe (expérimental)">Flux adaptatif plutôt que lecture directe (expérimental)</span></label>
+                        </div>
+                    </div>
+
+                    <div class="abr-box">
+                        <h3 data-t="Applications et langue">Applications et langue</h3>
+                        <div class="abr-grid">
+                            <div class="inputContainer" data-key="ExcludedClients">
+                                <label class="inputLabel" for="abrExcludedClients" data-t="Applications exclues">Applications exclues</label>
+                                <textarea is="emby-textarea" id="abrExcludedClients" class="emby-textarea" rows="3"></textarea>
+                                <div class="fieldDescription" data-t="Une par ligne (ou séparées par des virgules) : une application dont le nom contient ce texte garde le flux de Jellyfin tel quel. Vide par défaut.">Une par ligne (ou séparées par des virgules) : une application dont le nom contient ce texte garde le flux de Jellyfin tel quel. Vide par défaut.</div>
+                            </div>
+                            <div class="selectContainer">
+                                <label class="selectLabel" for="abrLanguage" data-t="Langue de cette page">Langue de cette page</label>
+                                <select is="emby-select" id="abrLanguage" class="emby-select-withcolor emby-select">
+                                    <option value="System" data-t="celle de Jellyfin">celle de Jellyfin</option>
+                                    <option value="French">Français</option>
+                                    <option value="English">English</option>
+                                    <option value="German">Deutsch</option>
+                                    <option value="Spanish">Español</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button is="emby-button" type="submit" class="raised button-submit block"><span data-t="Enregistrer">Enregistrer</span></button>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            (function () {
+                var pluginId = '3c8e5a71-2f4b-4d96-a1e0-7b9d64c2f815';
+                var page = document.getElementById('AdaptiveBitrateConfigPage');
+                var dict = {};
+                var lang = 'fr';
+                function tr(s) { return dict[s] || s; }
+                function trf(s) { var a = arguments; return tr(s).replace(/\{(\d+)\}/g, function (m, i) { return String(a[+i + 1]); }); }
+                function $(id) { return page.querySelector('#' + id); }
+
+                function translateDom() {
+                    page.querySelectorAll('[data-t]').forEach(function (e) { e.textContent = tr(e.getAttribute('data-t')); });
+                }
+
+                // un réglage sans effet : grisé, désactivé, avec la raison (valeur gardée et enregistrée)
+                var WHY = {
+                    AboveCapKbps: function () { return (parseInt($('abrRungsAbove').value, 10) || 0) > 0 ? '' : tr('aucune qualité plus haute proposée'); }
+                };
+                function refresh() {
+                    var on = $('abrEnabled').checked;
+                    page.querySelectorAll('[data-key]').forEach(function (box) {
+                        var key = box.getAttribute('data-key');
+                        var why = !on ? tr('plugin coupé') : (WHY[key] ? WHY[key]() : '');
+                        box.classList.toggle('abr-off', !!why);
+                        box.querySelectorAll('input,select,textarea').forEach(function (i) { i.disabled = !!why; });
+                        var w = box.querySelector('.abr-why');
+                        if (!w) { w = document.createElement('span'); w.className = 'abr-why'; box.appendChild(w); }
+                        w.textContent = why ? trf('Sans effet : {0}.', why) : '';
+                    });
+                }
+
+                function fill(c) {
+                    $('abrEnabled').checked = c.Enabled !== false;
+                    $('abrScope').value = c.Scope === 'All' || c.Scope === 1 ? 'All' : 'Remote';
+                    $('abrMaxRungs').value = c.MaxRungs;
+                    $('abrStep').value = c.Step;
+                    $('abrMinBitrateKbps').value = c.MinBitrateKbps;
+                    $('abrRungsAbove').value = c.RungsAbove;
+                    $('abrAboveCapKbps').value = c.AboveCapKbps;
+                    $('abrPreferAdaptive').checked = !!c.PreferAdaptive;
+                    $('abrExcludedClients').value = c.ExcludedClients || '';
+                    $('abrLanguage').value = typeof c.Language === 'string' ? c.Language : ['System', 'French', 'English', 'German', 'Spanish'][c.Language || 0];
+                    refresh();
+                }
+
+                function cell(row, text) { row.insertCell().textContent = String(text); }
+
+                function status() {
+                    ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('AdaptiveBitrate/Status', { lang: lang }), dataType: 'json' }).then(function (s) {
+                        var h = $('abrHealth');
+                        h.textContent = '';
+                        var line = document.createElement('span');
+                        if (!s.compatible) {
+                            line.className = 'abr-warn';
+                            line.textContent = tr('La playlist HLS de cette version de Jellyfin n\'a pas la forme attendue : le plugin ne la modifie pas.');
+                        } else {
+                            line.className = s.tested ? 'abr-ok' : 'abr-warn';
+                            line.textContent = s.tested ? trf('Jellyfin {0} : testé.', s.jellyfin) : trf('Jellyfin {0} : pas encore testé avec ce plugin.', s.jellyfin);
+                        }
+                        h.appendChild(line);
+                        var box = $('abrSessions');
+                        box.textContent = '';
+                        if (!s.sessions || !s.sessions.length) {
+                            var p = document.createElement('p');
+                            p.textContent = tr('Aucune lecture concernée depuis le démarrage du serveur.');
+                            box.appendChild(p);
+                            return;
+                        }
+                        var t = document.createElement('table');
+                        var head = t.insertRow();
+                        [tr('Titre'), tr('Application'), tr('Qualités proposées'), tr('Descentes'), tr('Montées'), tr('Débits successifs (kb/s)')].forEach(function (x) {
+                            var th = document.createElement('th'); th.textContent = x; head.appendChild(th);
+                        });
+                        s.sessions.forEach(function (x) {
+                            var r = t.insertRow();
+                            cell(r, x.title); cell(r, x.client); cell(r, x.offered); cell(r, x.down); cell(r, x.up);
+                            cell(r, x.steps.map(function (p) { return p.kbps > 0 ? p.kbps : tr('origine'); }).join(' → '));
+                        });
+                        box.appendChild(t);
+                    });
+                }
+
+                function load() {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (c) { fill(c); Dashboard.hideLoadingMsg(); });
+                    status();
+                }
+
+                $('abrEnabled').addEventListener('change', refresh);
+                $('abrRungsAbove').addEventListener('input', refresh);
+                page.querySelector('#abrForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                        c.Enabled = $('abrEnabled').checked;
+                        c.Scope = $('abrScope').value;
+                        c.MaxRungs = parseInt($('abrMaxRungs').value, 10) || 0;
+                        c.Step = parseFloat(String($('abrStep').value).replace(',', '.')) || 0.6;
+                        c.MinBitrateKbps = parseInt($('abrMinBitrateKbps').value, 10) || 700;
+                        c.RungsAbove = parseInt($('abrRungsAbove').value, 10) || 0;
+                        c.AboveCapKbps = parseInt($('abrAboveCapKbps').value, 10) || 0;
+                        c.PreferAdaptive = $('abrPreferAdaptive').checked;
+                        c.ExcludedClients = $('abrExcludedClients').value;
+                        c.Language = $('abrLanguage').value;
+                        return ApiClient.updatePluginConfiguration(pluginId, c);
+                    }).then(function (r) { Dashboard.processPluginConfigurationUpdateResult(r); start(); });
+                    return false;
+                });
+
+                // langue : réglage du plugin, sinon celle de Jellyfin ; textes fournis par le serveur
+                function start() {
+                    var jf = document.documentElement.lang || navigator.language || 'en';
+                    ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('AdaptiveBitrate/I18n', { lang: jf }), dataType: 'json' }).then(function (r) {
+                        lang = r.lang; dict = r.dict || {};
+                        translateDom();
+                        load();
+                    }, function () { load(); });
+                }
+                page.addEventListener('pageshow', start);
+            })();
+        </script>
+    </div>
+</body>
+</html>

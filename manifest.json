@@ -1,0 +1,12 @@
+[
+  {
+    "guid": "3c8e5a71-2f4b-4d96-a1e0-7b9d64c2f815",
+    "name": "Adaptive Bitrate",
+    "description": "Real adaptive bitrate for Jellyfin's HLS streams. Jellyfin measures the network once, when playback starts, and offers a single quality: when the connection weakens, playback stops to buffer or restarts at a lower quality. This plugin puts a real quality ladder in every HLS stream, each step produced by Jellyfin itself with the same audio track and subtitles, so the player (web, Android, iOS) switches quality on its own, loading the new one before switching, without a cut. Lower qualities cost nothing until a player uses them. Source, documentation and issues: https://github.com/crocodile13/jellyfin-plugin-adaptive-bitrate",
+    "overview": "Quality that follows the network, without a cut.",
+    "owner": "crocodile13",
+    "category": "General",
+    "imageUrl": "https://raw.githubusercontent.com/crocodile13/jellyfin-plugin-adaptive-bitrate/main/assets/thumb.png",
+    "versions": []
+  }
+]

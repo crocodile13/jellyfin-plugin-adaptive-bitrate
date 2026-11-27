@@ -1,0 +1,90 @@
+name: Integration
+
+# Adaptive Bitrate in a real Jellyfin (Docker), on the oldest and newest supported versions, with a generated test video
+# (1080p, 8 Mb/s, two audio tracks, subtitles). API: the quality ladder of every HLS master playlist (transcoding,
+# video copied on top, burned-in subtitles), same session / audio track / subtitles on every step, segments of equal
+# length, and a quality switch measured on the segments themselves (no gap, key frame first, same audio). Browser:
+# jellyfin-web in Google Chrome with the network throttled during playback, with and without the ladder (stalls,
+# quality switches, playback restarts). Report in the job summary and as an artifact. Nothing secret: generated video,
+# random password, token masked.
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/integration/**'
+      - '.github/workflows/integration.yml'
+  push:
+    branches: ['sim-*']
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  jellyfin:
+    name: Jellyfin ${{ matrix.jellyfin }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        jellyfin: ['12.2', '12.4']
+    env:
+      ABR_OUT: ${{ github.workspace }}/abr-out
+      ABR_PROBE: ${{ github.workspace }}/probe
+      ABR_IMAGE: jellyfin/jellyfin:${{ matrix.jellyfin }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Build Adaptive Bitrate
+        run: SKIP_TESTS=1 ./build.sh   # unit tests run in CI
+
+      - name: Plugin and test video
+        run: |
+          set -euo pipefail
+          mkdir -p jf/config/plugins jf/cache media probe abr-out
+          cp -r out/AdaptiveBitrate_* jf/config/plugins/
+          docker pull -q "$ABR_IMAGE"
+          python tests/integration/abr.py media media
+
+      - name: Start Jellyfin
+        run: |
+          docker run -d --name jf -p 8096:8096 -v "$PWD/jf/config:/config" -v "$PWD/jf/cache:/cache" \
+            -v "$PWD/media:/media:ro" -v "$PWD/probe:/probe" "$ABR_IMAGE"
+
+      - name: Browser (Playwright, Google Chrome for H.264 and AAC)
+        run: pip install -q playwright==1.49.1 && python -m playwright install --with-deps chrome >/dev/null
+
+      - name: Checks
+        env:
+          ABR_BROWSER: '1'
+        run: cd tests/integration && python abr.py run
+
+      - name: Report
+        if: always()
+        run: |
+          cat abr-out/report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report" >> "$GITHUB_STEP_SUMMARY"
+          docker logs jf 2>&1 | grep -E 'Adaptive Bitrate|AdaptiveBitrate|\[ERR\]|\[FTL\]|Exception' \
+            | sed -E 's/((api_?key|token|password|pw)[=:" ]+)[^ ,"&]+/\1***/Ig' > abr-out/jellyfin.log || true
+          tail -60 abr-out/jellyfin.log
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: integration-${{ matrix.jellyfin }}
+          path: abr-out/
+          retention-days: 14

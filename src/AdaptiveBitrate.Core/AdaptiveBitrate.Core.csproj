@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CS1591</NoWarn>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="english.json" LogicalName="AdaptiveBitrate.Core.english.json" />
+    <EmbeddedResource Include="german.json" LogicalName="AdaptiveBitrate.Core.german.json" />
+    <EmbeddedResource Include="spanish.json" LogicalName="AdaptiveBitrate.Core.spanish.json" />
+  </ItemGroup>
+</Project>

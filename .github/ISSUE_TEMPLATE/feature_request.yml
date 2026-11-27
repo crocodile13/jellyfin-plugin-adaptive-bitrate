@@ -1,0 +1,19 @@
+name: Idea
+description: An idea to make quality switching better
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Describe the situation you want to improve (network, app, file) rather than only the solution. Français accepté.
+  - type: textarea
+    attributes:
+      label: The situation
+      description: What happens today, on which app and network.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What you would like
+    validations:
+      required: true

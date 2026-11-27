@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! A few details make it much faster to fix.
+        Never paste API keys, tokens, passwords, server addresses or session cookies. Français accepté.
+  - type: checkboxes
+    attributes:
+      label: Before you start
+      options:
+        - label: I am on the latest Adaptive Bitrate version (Dashboard → Plugins → Adaptive Bitrate).
+          required: true
+        - label: I searched the existing issues and the [wiki](https://github.com/crocodile13/jellyfin-plugin-adaptive-bitrate/wiki).
+          required: true
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: What you played, on which app, what you expected, what you got (cut, freeze, no sound, missing subtitles, restart…).
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Adaptive Bitrate version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Jellyfin version
+      placeholder: "12.4.0"
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: App and device
+      placeholder: "Jellyfin Web in Firefox, Jellyfin Android TV…"
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: The plugin page
+      description: What Dashboard → Adaptive Bitrate shows under "Status" for this playback (qualities offered, successive bitrates).
+  - type: textarea
+    attributes:
+      label: The file
+      description: Video codec, resolution, bitrate, HDR or not, audio and subtitle tracks (Jellyfin's media info is fine). No file names that identify you.
+  - type: textarea
+    attributes:
+      label: Server log
+      description: Lines mentioning "Adaptive Bitrate" or errors around the playback. Remove anything private.
+      render: text
