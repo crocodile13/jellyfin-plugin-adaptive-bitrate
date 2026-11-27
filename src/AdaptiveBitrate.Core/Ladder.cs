@@ -79,7 +79,9 @@ public static class Ladder
 
     /// <summary>
     /// Marches à proposer, de la plus haute à la plus basse, sans la qualité d'origine (celle que Jellyfin a déjà mise
-    /// dans la playlist). Le débit de départ est celui que le lecteur a demandé, sinon celui du fichier (lecture en copie).
+    /// dans la playlist). Le débit de départ est le plus petit de celui que le lecteur a demandé et de celui du fichier :
+    /// en copie de la vidéo, le lecteur web demande un plafond sans rapport avec le fichier (866 Mb/s mesurés), et une
+    /// échelle partie de là restait tout entière au-dessus du fichier (aucune qualité plus basse en réalité).
     /// </summary>
     /// <param name="requested">Débit vidéo demandé par le lecteur (bits par seconde ; null ou 0 = inconnu).</param>
     /// <param name="src">Vidéo d'origine.</param>
@@ -88,7 +90,7 @@ public static class Ladder
     {
         var o = options.Sanitized();
         var res = new List<Rung>();
-        int top = requested is > 0 ? requested.Value : src.Bitrate;
+        int top = requested is > 0 ? (src.Bitrate > 0 ? Math.Min(requested.Value, src.Bitrate) : requested.Value) : src.Bitrate;
         if (top <= 0)
         {
             return res;

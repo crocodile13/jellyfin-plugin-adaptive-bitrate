@@ -37,6 +37,8 @@ public class LadderTests
     public void WithoutARequestedBitrateTheFileBitrateIsTheTopAndAboveRungsStayUnderTheFile()
     {
         Assert.Equal(7_200_000, Ladder.Rungs(null, Hd, new LadderOptions())[0].VideoBitrate);   // copie : le fichier
+        // copie demandée par le lecteur web avec un plafond démesuré (866 Mb/s mesurés) : l'échelle part du fichier
+        Assert.Equal(7_200_000, Ladder.Rungs(866_527_646, Hd, new LadderOptions())[0].VideoBitrate);
         Assert.Empty(Ladder.Rungs(null, new SourceVideo(0, 0, 0, 0), new LadderOptions()));
         var o = new LadderOptions { RungsAbove = 2 };
         var r = Ladder.Rungs(5_000_000, Hd, o);
