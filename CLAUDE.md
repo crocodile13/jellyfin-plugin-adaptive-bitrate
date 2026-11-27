@@ -47,10 +47,10 @@ python tools/compat.py check
 ## Livraison
 
 Comme Reco+ : branche depuis `origin/main` à jour, PR, CI et intégration verts, rapport relu, merge `--rebase`. Versions
-`1.MINEUR.CORRECTIF.0`, groupées ; monter une version = csproj (`Version`, `AssemblyVersion`, `FileVersion`), `meta.json`,
-entrée en tête de `manifest.json` (changelog anglais commençant par la version puis la fenêtre Jellyfin, `targetAbi` =
-compat.json from, URL/checksum/date vides), rubrique en tête de `CHANGELOG.md`. Avant la première version, le catalogue
-est vide et `release.yml` ne publie rien. Commits, PR : anglais, auteur `crocodile13 <134718087+crocodile13@users.noreply.github.com>`.
+`1.MINEUR.CORRECTIF.0`, groupées ; monter une version = csproj (`Version`, `AssemblyVersion`, `FileVersion`), `meta.json`
+(version, changelog anglais commençant par la version puis la fenêtre Jellyfin) et une rubrique en tête de `CHANGELOG.md`.
+**`manifest.json` ne se touche pas** : la publication y ajoute l'entrée (changelog et `targetAbi` de `meta.json`, adresse,
+somme, date) une fois le zip publié, pour qu'aucune version ne paraisse dans le catalogue avant de pouvoir s'installer. Commits, PR : anglais, auteur `crocodile13 <134718087+crocodile13@users.noreply.github.com>`.
 Le wiki (`jellyfin-plugin-adaptive-bitrate.wiki.git`, pages anglaises et « …-fr ») suit chaque changement de comportement.
 
 ## Conventions
