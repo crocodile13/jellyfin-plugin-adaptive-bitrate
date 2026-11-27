@@ -77,6 +77,31 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Surcouche de diagnostic pendant une lecture dans le navigateur (qualité, débit reçu, tampon…).</summary>
     public DebugOverlay DebugOverlay { get; set; } = DebugOverlay.Off;
 
+    /// <summary>Le serveur pilote la qualité envoyée (sinon il mesure seulement, pour la surcouche et la page).</summary>
+    public bool ServerControl { get; set; }
+
+    /// <summary>Après une descente, secondes avant de laisser remonter.</summary>
+    public int HoldAfterDownSeconds { get; set; } = 30;
+
+    /// <summary>Secondes au moins entre deux changements décidés par le serveur.</summary>
+    public int MinChangeSeconds { get; set; } = 10;
+
+    /// <summary>Descendre d'avance quand le débit mesuré ne suffit plus.</summary>
+    public bool AnticipateDown { get; set; } = true;
+
+    /// <summary>Marge de débit (une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge).</summary>
+    public double Margin { get; set; } = 1.25;
+
+    /// <summary>Segments mesurés au moins avant une décision du serveur.</summary>
+    public int MinSamples { get; set; } = 2;
+
+    /// <summary>Réglages du pilotage pour le moteur.</summary>
+    public GovernorOptions GovernorOptions() => new GovernorOptions
+    {
+        Enabled = ServerControl, HoldAfterDownSeconds = HoldAfterDownSeconds, MinChangeSeconds = MinChangeSeconds,
+        AnticipateDown = AnticipateDown, Margin = Margin, MinSamples = MinSamples,
+    }.Sanitized();
+
     /// <summary>Réglages de l'échelle pour le moteur.</summary>
     public LadderOptions LadderOptions() => new LadderOptions
     {

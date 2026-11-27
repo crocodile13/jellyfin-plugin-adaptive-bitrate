@@ -84,6 +84,35 @@
                     </div>
 
                     <div class="abr-box">
+                        <h3 data-t="Pilotage par le serveur">Pilotage par le serveur</h3>
+                        <p data-t="Le serveur chronomètre l'envoi de chaque segment (le débit réel du lecteur, sans rien télécharger en plus) et déduit l'avance du lecteur du rythme de ses demandes : toujours, pour la surcouche et l'état. Activé, il choisit aussi la qualité envoyée : il attend avant de laisser remonter après une baisse, et descend d'avance quand le débit ne suffit plus, pendant que le lecteur a encore de l'avance. Descendre à la demande du lecteur reste toujours immédiat ; jamais deux encodages pour une lecture.">Le serveur chronomètre l'envoi de chaque segment (le débit réel du lecteur, sans rien télécharger en plus) et déduit l'avance du lecteur du rythme de ses demandes : toujours, pour la surcouche et l'état. Activé, il choisit aussi la qualité envoyée : il attend avant de laisser remonter après une baisse, et descend d'avance quand le débit ne suffit plus, pendant que le lecteur a encore de l'avance. Descendre à la demande du lecteur reste toujours immédiat ; jamais deux encodages pour une lecture.</p>
+                        <div class="abr-grid">
+                            <label class="checkboxContainer" data-key="ServerControl"><input type="checkbox" is="emby-checkbox" id="abrServerControl"><span data-t="Le serveur pilote la qualité envoyée">Le serveur pilote la qualité envoyée</span></label>
+                            <div class="inputContainer" data-key="HoldAfterDownSeconds">
+                                <label class="inputLabel" for="abrHoldAfterDownSeconds" data-t="Attente avant de remonter (s)">Attente avant de remonter (s)</label>
+                                <input is="emby-input" type="number" id="abrHoldAfterDownSeconds" min="0" max="600" step="5">
+                                <div class="fieldDescription" data-t="Après une baisse de qualité, le temps pendant lequel la qualité ne remonte pas, même si le lecteur le demande : un réseau qui fait le yoyo ne fait pas changer l'image sans arrêt. 0 = aucune attente. Par défaut : 30.">Après une baisse de qualité, le temps pendant lequel la qualité ne remonte pas, même si le lecteur le demande : un réseau qui fait le yoyo ne fait pas changer l'image sans arrêt. 0 = aucune attente. Par défaut : 30.</div>
+                            </div>
+                            <div class="inputContainer" data-key="MinChangeSeconds">
+                                <label class="inputLabel" for="abrMinChangeSeconds" data-t="Écart minimal entre deux changements (s)">Écart minimal entre deux changements (s)</label>
+                                <input is="emby-input" type="number" id="abrMinChangeSeconds" min="0" max="300" step="1">
+                                <div class="fieldDescription" data-t="Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. Par défaut : 10.">Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. Par défaut : 10.</div>
+                            </div>
+                            <label class="checkboxContainer" data-key="AnticipateDown"><input type="checkbox" is="emby-checkbox" id="abrAnticipateDown"><span data-t="Descendre d'avance quand le débit ne suffit plus">Descendre d'avance quand le débit ne suffit plus</span></label>
+                            <div class="inputContainer" data-key="Margin">
+                                <label class="inputLabel" for="abrMargin" data-t="Marge de débit">Marge de débit</label>
+                                <input is="emby-input" type="number" id="abrMargin" min="1" max="3" step="0.05">
+                                <div class="fieldDescription" data-t="Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. Par défaut : 1,25.">Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. Par défaut : 1,25.</div>
+                            </div>
+                            <div class="inputContainer" data-key="MinSamples">
+                                <label class="inputLabel" for="abrMinSamples" data-t="Segments mesurés avant de décider">Segments mesurés avant de décider</label>
+                                <input is="emby-input" type="number" id="abrMinSamples" min="1" max="10" step="1">
+                                <div class="fieldDescription" data-t="Aucune décision du serveur sur une seule mesure. Par défaut : 2.">Aucune décision du serveur sur une seule mesure. Par défaut : 2.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="abr-box">
                         <h3 data-t="Lecture directe">Lecture directe</h3>
                         <p data-t="Un fichier lu directement n'a qu'une qualité : si le réseau faiblit, l'image s'arrête. Cette option fait passer les lecteurs concernés par le flux adaptatif ; la vidéo y est copiée telle quelle tant que le réseau suit (presque sans calcul pour le serveur), et transcodée seulement quand le lecteur descend.">Un fichier lu directement n'a qu'une qualité : si le réseau faiblit, l'image s'arrête. Cette option fait passer les lecteurs concernés par le flux adaptatif ; la vidéo y est copiée telle quelle tant que le réseau suit (presque sans calcul pour le serveur), et transcodée seulement quand le lecteur descend.</p>
                         <div class="abr-grid">
@@ -149,7 +178,12 @@
 
                 // un réglage sans effet : grisé, désactivé, avec la raison (valeur gardée et enregistrée)
                 var WHY = {
-                    AboveCapKbps: function () { return (parseInt($('abrRungsAbove').value, 10) || 0) > 0 ? '' : tr('aucune qualité plus haute proposée'); }
+                    AboveCapKbps: function () { return (parseInt($('abrRungsAbove').value, 10) || 0) > 0 ? '' : tr('aucune qualité plus haute proposée'); },
+                    HoldAfterDownSeconds: function () { return $('abrServerControl').checked ? '' : tr('le serveur ne pilote pas la qualité'); },
+                    MinChangeSeconds: function () { return $('abrServerControl').checked ? '' : tr('le serveur ne pilote pas la qualité'); },
+                    AnticipateDown: function () { return $('abrServerControl').checked ? '' : tr('le serveur ne pilote pas la qualité'); },
+                    Margin: function () { return $('abrServerControl').checked ? '' : tr('le serveur ne pilote pas la qualité'); },
+                    MinSamples: function () { return $('abrServerControl').checked ? '' : tr('le serveur ne pilote pas la qualité'); }
                 };
                 function refresh() {
                     var on = $('abrEnabled').checked;
@@ -173,6 +207,12 @@
                     $('abrRungsAbove').value = c.RungsAbove;
                     $('abrAboveCapKbps').value = c.AboveCapKbps;
                     $('abrPreferAdaptive').checked = !!c.PreferAdaptive;
+                    $('abrServerControl').checked = !!c.ServerControl;
+                    $('abrHoldAfterDownSeconds').value = c.HoldAfterDownSeconds;
+                    $('abrMinChangeSeconds').value = c.MinChangeSeconds;
+                    $('abrAnticipateDown').checked = c.AnticipateDown !== false;
+                    $('abrMargin').value = c.Margin;
+                    $('abrMinSamples').value = c.MinSamples;
                     $('abrExcludedClients').value = c.ExcludedClients || '';
                     $('abrDebugOverlay').value = typeof c.DebugOverlay === 'string' ? c.DebugOverlay : ['Off', 'Admins', 'Everyone'][c.DebugOverlay || 0];
                     $('abrLanguage').value = typeof c.Language === 'string' ? c.Language : ['System', 'French', 'English', 'German', 'Spanish'][c.Language || 0];
@@ -204,13 +244,14 @@
                         }
                         var t = document.createElement('table');
                         var head = t.insertRow();
-                        [tr('Titre'), tr('Application'), tr('Qualités proposées'), tr('Descentes'), tr('Montées'), tr('Débits successifs (kb/s)')].forEach(function (x) {
+                        [tr('Titre'), tr('Application'), tr('Qualités proposées'), tr('Descentes'), tr('Montées'), tr('Débits successifs (kb/s)'), tr('Mesure du serveur')].forEach(function (x) {
                             var th = document.createElement('th'); th.textContent = x; head.appendChild(th);
                         });
                         s.sessions.forEach(function (x) {
                             var r = t.insertRow();
                             cell(r, x.title); cell(r, x.client); cell(r, x.offered); cell(r, x.down); cell(r, x.up);
                             cell(r, x.steps.map(function (p) { return p.kbps > 0 ? p.kbps : tr('origine'); }).join(' → '));
+                            cell(r, x.server && x.server.rateKbps !== null ? trf('{0} kb/s, {1} remontées retenues, {2} descentes anticipées', x.server.rateKbps, x.server.held, x.server.anticipated) : '—');
                         });
                         box.appendChild(t);
                     });
@@ -224,6 +265,7 @@
 
                 $('abrEnabled').addEventListener('change', refresh);
                 $('abrRungsAbove').addEventListener('input', refresh);
+                $('abrServerControl').addEventListener('change', refresh);
                 page.querySelector('#abrForm').addEventListener('submit', function (e) {
                     e.preventDefault();
                     Dashboard.showLoadingMsg();
@@ -236,6 +278,12 @@
                         c.RungsAbove = parseInt($('abrRungsAbove').value, 10) || 0;
                         c.AboveCapKbps = parseInt($('abrAboveCapKbps').value, 10) || 0;
                         c.PreferAdaptive = $('abrPreferAdaptive').checked;
+                        c.ServerControl = $('abrServerControl').checked;
+                        c.HoldAfterDownSeconds = parseInt($('abrHoldAfterDownSeconds').value, 10) || 0;
+                        c.MinChangeSeconds = parseInt($('abrMinChangeSeconds').value, 10) || 0;
+                        c.AnticipateDown = $('abrAnticipateDown').checked;
+                        c.Margin = parseFloat(String($('abrMargin').value).replace(',', '.')) || 1.25;
+                        c.MinSamples = parseInt($('abrMinSamples').value, 10) || 2;
                         c.ExcludedClients = $('abrExcludedClients').value;
                         c.Language = $('abrLanguage').value;
                         c.DebugOverlay = $('abrDebugOverlay').value;
