@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AdaptiveBitrate.Core;
 
-/// <summary>Une marche de l'échelle : débit vidéo demandé à Jellyfin et hauteur maximale de l'image.</summary>
+/// <summary>Une marche de l'échelle : débit vidéo demandé à Jellyfin et taille maximale de l'image.</summary>
 /// <param name="VideoBitrate">Débit vidéo (bits par seconde).</param>
-/// <param name="MaxHeight">Hauteur maximale (pixels, paire) ; Jellyfin garde les proportions.</param>
-public sealed record Rung(int VideoBitrate, int MaxHeight);
+/// <param name="MaxHeight">Hauteur maximale (pixels, paire).</param>
+/// <param name="MaxWidth">Largeur maximale (pixels, paire), aux proportions de la source ; 0 = inconnue.</param>
+public sealed record Rung(int VideoBitrate, int MaxHeight, int MaxWidth = 0);
 
 /// <summary>Réglages de l'échelle (bornés par <see cref="Sanitized"/>).</summary>
 public sealed class LadderOptions
@@ -77,6 +79,10 @@ public static class Ladder
         return Math.Max(even, 144);
     }
 
+    /// <summary>Largeur qui va avec une hauteur, aux proportions de la source (paire ; 0 si la source est inconnue).</summary>
+    public static int WidthFor(int height, SourceVideo src)
+        => src.Width > 0 && src.Height > 0 ? (int)Math.Round(height * (double)src.Width / src.Height / 2) * 2 : 0;
+
     /// <summary>
     /// Marches à proposer, de la plus haute à la plus basse, sans la qualité d'origine (celle que Jellyfin a déjà mise
     /// dans la playlist). Le débit de départ est le plus petit de celui que le lecteur a demandé et de celui du fichier :
@@ -118,19 +124,22 @@ public static class Ladder
 
         res.AddRange(above);
 
-        // en dessous : chaque marche a Step fois le débit de celle du dessus, jusqu'au débit minimal
-        double b = top;
-        for (int i = 0; i < o.MaxRungs; i++)
+        // en dessous : chaque marche a Step fois le débit de celle du dessus ; s'il faut plus de MaxRungs marches pour
+        // descendre jusqu'au débit minimal, l'écart s'élargit pour que la dernière l'atteigne quand même (mesuré : un
+        // fichier à 8 Mb/s s'arrêtait à 1,04 Mb/s, trop près d'une connexion à 1,6 Mb/s)
+        if (o.MaxRungs > 0 && top * o.Step >= o.MinBitrate)
         {
-            b *= o.Step;
-            if (b < o.MinBitrate)
+            double needed = Math.Log((double)o.MinBitrate / top) / Math.Log(o.Step);
+            bool widen = needed > o.MaxRungs;
+            int n = widen ? o.MaxRungs : (int)Math.Floor(needed + 1e-9);
+            double step = widen ? Math.Pow((double)o.MinBitrate / top, 1.0 / n) : o.Step;
+            for (int i = 1; i <= n; i++)
             {
-                break;
+                int b = (int)Math.Round(top * Math.Pow(step, i));
+                res.Add(new Rung(b, HeightFor(b, src)));
             }
-
-            res.Add(new Rung((int)Math.Round(b), HeightFor((int)Math.Round(b), src)));
         }
 
-        return res;
+        return res.Select(r => r with { MaxWidth = WidthFor(r.MaxHeight, src) }).ToList();
     }
 }

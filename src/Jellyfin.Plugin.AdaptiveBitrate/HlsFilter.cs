@@ -170,7 +170,9 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
         var query = QueryHelpers.ParseQuery(saved.Value);
         var overrides = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["videoBitRate"] = rung.VideoBitrate, ["maxHeight"] = rung.MaxHeight, ["maxWidth"] = null, ["width"] = null, ["height"] = null,
+            // largeur aussi : sinon Jellyfin garde la largeur de la source et sa propre table de résolutions peut rendre une
+            // marche plus basse en 1080p (mesuré : 1920x1080 à 3 Mb/s, moins net qu'un 720p)
+            ["videoBitRate"] = rung.VideoBitrate, ["maxHeight"] = rung.MaxHeight, ["maxWidth"] = rung.MaxWidth > 0 ? rung.MaxWidth : null, ["width"] = null, ["height"] = null,
             ["allowVideoStreamCopy"] = false, ["enableAutoStreamCopy"] = false, ["enableAdaptiveBitrateStreaming"] = false,
         };
         var q = new Dictionary<string, StringValues>(query, StringComparer.OrdinalIgnoreCase);

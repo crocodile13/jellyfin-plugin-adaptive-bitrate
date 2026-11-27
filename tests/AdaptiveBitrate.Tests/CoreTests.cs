@@ -14,11 +14,16 @@ public class LadderTests
     public void RungsGoDownByTheStepUntilTheMinimumWithShrinkingImages()
     {
         var r = Ladder.Rungs(8_000_000, Hd, new LadderOptions());
-        Assert.Equal(new[] { 4_800_000, 2_880_000, 1_728_000, 1_036_800 }, r.Select(x => x.VideoBitrate));
+        // 4 marches au plus : l'écart s'élargit pour que la dernière atteigne le débit minimal (700 kb/s)
+        Assert.Equal(4, r.Count);
+        Assert.InRange(r[^1].VideoBitrate, 699_000, 701_000);
+        Assert.All(r.Zip(r.Skip(1)), p => Assert.InRange(p.Second.VideoBitrate / (double)p.First.VideoBitrate, 0.54, 0.55));
+        Assert.All(r, x => Assert.Equal((int)Math.Round(x.MaxHeight * 16 / 9.0 / 2) * 2, x.MaxWidth));
+        // peu de marches nécessaires : l'écart réglé (0,6) est gardé
+        Assert.Equal(new[] { 1_200_000, 720_000 }, Ladder.Rungs(2_000_000, Hd, new LadderOptions()).Select(x => x.VideoBitrate));
         Assert.True(r.Zip(r.Skip(1)).All(p => p.Second.MaxHeight < p.First.MaxHeight), string.Join(" ", r));
         Assert.All(r, x => Assert.True(x.MaxHeight % 2 == 0 && x.MaxHeight <= 1080));
-        // quatre marches au plus, rien sous le minimum
-        Assert.Equal(2, Ladder.Rungs(2_000_000, Hd, new LadderOptions()).Count);
+        // rien sous le minimum
         Assert.Empty(Ladder.Rungs(1_000_000, Hd, new LadderOptions()));
     }
 
@@ -36,9 +41,9 @@ public class LadderTests
     [Fact]
     public void WithoutARequestedBitrateTheFileBitrateIsTheTopAndAboveRungsStayUnderTheFile()
     {
-        Assert.Equal(7_200_000, Ladder.Rungs(null, Hd, new LadderOptions())[0].VideoBitrate);   // copie : le fichier
+        Assert.InRange(Ladder.Rungs(null, Hd, new LadderOptions())[0].VideoBitrate, 5_800_000, 6_000_000);   // copie : le fichier (12 Mb/s), écart élargi
         // copie demandée par le lecteur web avec un plafond démesuré (866 Mb/s mesurés) : l'échelle part du fichier
-        Assert.Equal(7_200_000, Ladder.Rungs(866_527_646, Hd, new LadderOptions())[0].VideoBitrate);
+        Assert.Equal(Ladder.Rungs(null, Hd, new LadderOptions())[0], Ladder.Rungs(866_527_646, Hd, new LadderOptions())[0]);
         Assert.Empty(Ladder.Rungs(null, new SourceVideo(0, 0, 0, 0), new LadderOptions()));
         var o = new LadderOptions { RungsAbove = 2 };
         var r = Ladder.Rungs(5_000_000, Hd, o);
