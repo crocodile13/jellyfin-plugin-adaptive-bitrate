@@ -21,6 +21,26 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        Migrate();
+    }
+
+    /// <summary>Anciennes valeurs par défaut restées telles quelles : les nouvelles (une valeur réglée à la main reste).</summary>
+    private void Migrate()
+    {
+        var c = Configuration;
+        if (c.SettingsVersion >= 1)
+        {
+            return;
+        }
+
+        // 1.0.0 : rapport fixe de 0,6 entre qualités ; 1.0.1 : écart maximal de 0,5, l'échelle descend toujours jusqu'au minimum
+        if (Math.Abs(c.Step - 0.6) < 1e-9)
+        {
+            c.Step = 0.5;
+        }
+
+        c.SettingsVersion = 1;
+        SaveConfiguration();
     }
 
     /// <summary>Instance courante (null avant le chargement).</summary>

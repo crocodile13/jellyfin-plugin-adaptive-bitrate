@@ -9,14 +9,22 @@ namespace AdaptiveBitrate.Core;
 /// <param name="VideoBitrate">Débit vidéo de la marche demandée (bits par seconde ; 0 = qualité d'origine en copie).</param>
 public sealed record Switch(DateTime At, int VideoBitrate);
 
+/// <summary>Une qualité proposée dans la playlist maîtresse.</summary>
+/// <param name="Kbps">Débit annoncé (BANDWIDTH, kb/s, audio compris).</param>
+/// <param name="Resolution">Taille de l'image (« 1280x720 » ; vide si inconnue).</param>
+public sealed record Offer(int Kbps, string Resolution);
+
 /// <summary>Résumé d'une lecture : ses marches successives.</summary>
 /// <param name="Session">Identifiant de la lecture (PlaySessionId).</param>
 /// <param name="Title">Titre lu.</param>
 /// <param name="Client">Application.</param>
-/// <param name="Offered">Nombre de qualités proposées.</param>
+/// <param name="Offers">Qualités proposées, dans l'ordre de la playlist.</param>
 /// <param name="Steps">Marches dans l'ordre (sans répétition consécutive).</param>
-public sealed record SessionSummary(string Session, string Title, string Client, int Offered, IReadOnlyList<Switch> Steps)
+public sealed record SessionSummary(string Session, string Title, string Client, IReadOnlyList<Offer> Offers, IReadOnlyList<Switch> Steps)
 {
+    /// <summary>Nombre de qualités proposées.</summary>
+    public int Offered => Offers.Count;
+
     /// <summary>Descentes de qualité.</summary>
     public int Down => Steps.Zip(Steps.Skip(1)).Count(p => Rank(p.Second) < Rank(p.First));
 
@@ -47,12 +55,12 @@ public sealed class SwitchLog
         public string Session = string.Empty;
         public string Title = string.Empty;
         public string Client = string.Empty;
-        public int Offered;
+        public List<Offer> Offers = new();
         public List<Switch> Steps = new();
     }
 
-    /// <summary>Une playlist maîtresse a été servie avec <paramref name="offered"/> qualités.</summary>
-    public void Started(string session, string title, string client, int offered)
+    /// <summary>Une playlist maîtresse a été servie avec ces qualités.</summary>
+    public void Started(string session, string title, string client, IReadOnlyList<Offer> offers)
     {
         if (string.IsNullOrEmpty(session))
         {
@@ -74,7 +82,7 @@ public sealed class SwitchLog
 
             e.Title = title;
             e.Client = client;
-            e.Offered = offered;
+            e.Offers = offers.Take(20).ToList();
         }
     }
 
@@ -102,9 +110,20 @@ public sealed class SwitchLog
     {
         lock (_lock)
         {
-            return _entries.AsEnumerable().Reverse().Select(e => new SessionSummary(e.Session, e.Title, e.Client, e.Offered, e.Steps.ToList())).ToList();
+            return _entries.AsEnumerable().Reverse().Select(Summary).ToList();
         }
     }
+
+    /// <summary>Une lecture, ou null si elle n'est pas (ou plus) dans le journal.</summary>
+    public SessionSummary? Get(string session)
+    {
+        lock (_lock)
+        {
+            return Find(session) is { } e ? Summary(e) : null;
+        }
+    }
+
+    private static SessionSummary Summary(Entry e) => new(e.Session, e.Title, e.Client, e.Offers.ToList(), e.Steps.ToList());
 
     private Entry? Find(string session) => _entries.FirstOrDefault(x => x.Session == session);
 }

@@ -22,6 +22,19 @@ public enum UiLanguage
     Spanish,
 }
 
+/// <summary>Qui voit la surcouche de diagnostic pendant une lecture (client web).</summary>
+public enum DebugOverlay
+{
+    /// <summary>Personne.</summary>
+    Off,
+
+    /// <summary>Les administrateurs seulement.</summary>
+    Admins,
+
+    /// <summary>Tout le monde.</summary>
+    Everyone,
+}
+
 /// <summary>Réglages du plugin (bornés à l'usage par <see cref="Ladder"/>).</summary>
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
@@ -34,8 +47,11 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Nombre maximal de qualités proposées sous celle de départ.</summary>
     public int MaxRungs { get; set; } = 4;
 
-    /// <summary>Rapport de débit entre deux qualités voisines (0,6 : chacune à 60 % de celle du dessus).</summary>
-    public double Step { get; set; } = 0.6;
+    /// <summary>Écart maximal entre deux qualités voisines, en rapport de débit (0,5 : chacune a au moins la moitié du débit de celle du dessus).</summary>
+    public double Step { get; set; } = 0.5;
+
+    /// <summary>Réglages passés aux valeurs de la version en cours (migration, une seule fois).</summary>
+    public int SettingsVersion { get; set; }
 
     /// <summary>Débit vidéo minimal d'une qualité (kb/s).</summary>
     public int MinBitrateKbps { get; set; } = 700;
@@ -57,6 +73,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Langue de la page de configuration.</summary>
     public UiLanguage Language { get; set; } = UiLanguage.System;
+
+    /// <summary>Surcouche de diagnostic pendant une lecture dans le navigateur (qualité, débit reçu, tampon…).</summary>
+    public DebugOverlay DebugOverlay { get; set; } = DebugOverlay.Off;
 
     /// <summary>Réglages de l'échelle pour le moteur.</summary>
     public LadderOptions LadderOptions() => new LadderOptions

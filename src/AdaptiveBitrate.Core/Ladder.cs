@@ -16,8 +16,12 @@ public sealed class LadderOptions
     /// <summary>Nombre maximal de marches sous la qualité d'origine.</summary>
     public int MaxRungs { get; set; } = 4;
 
-    /// <summary>Rapport de débit entre deux marches voisines (0,6 : chaque marche a 60 % du débit de celle du dessus).</summary>
-    public double Step { get; set; } = 0.6;
+    /// <summary>
+    /// Écart maximal entre deux marches voisines, en rapport de débit (0,5 : chaque marche a au moins la moitié du débit
+    /// de celle du dessus). Un rapport plutôt qu'un pas en Mb/s : la perte de qualité perçue suit le rapport des débits
+    /// (de 10 à 9,5 Mb/s ne se voit pas, de 1 à 0,5 Mb/s si), comme dans les échelles courantes.
+    /// </summary>
+    public double Step { get; set; } = 0.5;
 
     /// <summary>Débit vidéo minimal d'une marche (bits par seconde) : en dessous, l'image ne vaut plus la peine.</summary>
     public int MinBitrate { get; set; } = 700_000;
@@ -32,7 +36,7 @@ public sealed class LadderOptions
     public LadderOptions Sanitized() => new()
     {
         MaxRungs = Math.Clamp(MaxRungs, 0, 8),
-        Step = double.IsFinite(Step) ? Math.Clamp(Step, 0.3, 0.9) : 0.6,
+        Step = double.IsFinite(Step) ? Math.Clamp(Step, 0.3, 0.9) : 0.5,
         MinBitrate = Math.Clamp(MinBitrate, 100_000, 50_000_000),
         RungsAbove = Math.Clamp(RungsAbove, 0, 3),
         AboveCap = Math.Clamp(AboveCap, 0, 400_000_000),
@@ -124,15 +128,14 @@ public static class Ladder
 
         res.AddRange(above);
 
-        // en dessous : chaque marche a Step fois le débit de celle du dessus ; s'il faut plus de MaxRungs marches pour
-        // descendre jusqu'au débit minimal, l'écart s'élargit pour que la dernière l'atteigne quand même (mesuré : un
-        // fichier à 8 Mb/s s'arrêtait à 1,04 Mb/s, trop près d'une connexion à 1,6 Mb/s)
-        if (o.MaxRungs > 0 && top * o.Step >= o.MinBitrate)
+        // en dessous : l'échelle descend toujours jusqu'au débit minimal (mesuré : un fichier à 8 Mb/s qui s'arrêtait à
+        // 1,04 Mb/s restait trop près d'une connexion à 1,6 Mb/s), en marches régulières (même rapport entre voisines),
+        // juste assez nombreuses pour que l'écart ne dépasse pas Step ; au-delà de MaxRungs, l'écart s'élargit
+        if (o.MaxRungs > 0 && top > o.MinBitrate * 1.1)
         {
             double needed = Math.Log((double)o.MinBitrate / top) / Math.Log(o.Step);
-            bool widen = needed > o.MaxRungs;
-            int n = widen ? o.MaxRungs : (int)Math.Floor(needed + 1e-9);
-            double step = widen ? Math.Pow((double)o.MinBitrate / top, 1.0 / n) : o.Step;
+            int n = Math.Clamp((int)Math.Ceiling(needed - 1e-9), 1, o.MaxRungs);
+            double step = Math.Pow((double)o.MinBitrate / top, 1.0 / n);
             for (int i = 1; i <= n; i++)
             {
                 int b = (int)Math.Round(top * Math.Pow(step, i));

@@ -64,8 +64,8 @@ jobs:
           test -n "$V"
           dotnet build src/Jellyfin.Plugin.AdaptiveBitrate -c Release -nologo -p:JellyfinVersion=$V -o "$RUNNER_TEMP/latest"
 
-      - name: Settings page tests (jsdom)
-        run: cd tests/client && npm install --no-save --no-package-lock --silent jsdom@24.1.3 && node configpage.test.mjs
+      - name: Settings page and overlay tests (jsdom)
+        run: cd tests/client && npm install --no-save --no-package-lock --silent jsdom@24.1.3 && node configpage.test.mjs && node overlay.test.mjs
 
       - name: Integration scripts compile
         run: python -m py_compile tests/integration/abr.py tools/compat.py

@@ -364,6 +364,7 @@ def browser_run(item, label: str):
         res["stall_s"] = round(res["stall_s"], 1)
         res["position"] = samples[-1]["t"] if samples else 0
         res["audio_growing"] = len(samples) > 10 and samples[-1]["audio"] > samples[len(samples) // 2]["audio"] > samples[0]["audio"]
+        res["overlay"] = page.evaluate("() => { const p = document.querySelector('.abr-overlay'); return p && p.style.display !== 'none' ? p.textContent : null; }")
         page.screenshot(path=str(OUT / f"lecture-{label}.png"))
         b.close()
     res["samples"] = samples
@@ -372,9 +373,9 @@ def browser_run(item, label: str):
 
 def browser_checks(item):
     # même flux HLS dans les deux essais (vidéo copiée en tête) : avec l'échelle, puis sans (aucune qualité dessous)
-    configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4)
+    configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4, DebugOverlay="Admins")
     on = browser_run(item, "echelle")
-    configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=0)
+    configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=0, DebugOverlay="Off")
     off = browser_run(item, "sans-echelle")
     configure(MaxRungs=4)
     report["browser"] = {"with": {k: v for k, v in on.items() if k != "samples"}, "without": {k: v for k, v in off.items() if k != "samples"}}
@@ -386,6 +387,8 @@ def browser_checks(item):
     check(on["playbackinfo"] == 0, f"navigateur : aucun redémarrage de la lecture ({on['playbackinfo']} nouvelle demande de lecture)")
     check(not [e for e in on["errors"] if "recul" in e], f"navigateur : la lecture n'a jamais reculé ({on['errors'][:3]})")
     check(on["audio_growing"], "navigateur : le son continue d'être décodé pendant toute la lecture")
+    check(bool(on.get("overlay")) and "Mb/s" in (on.get("overlay") or ""), f"surcouche de diagnostic affichée pendant la lecture ({(on.get('overlay') or '')[:160]})")
+    check(off.get("overlay") is None or "Mb/s" in off.get("overlay"), "surcouche : rien d'anormal sans échelle")
     check(on["stall_s"] <= max(3.0, off["stall_s"] * 0.5),
           f"navigateur : coupures {on['stall_s']} s avec l'échelle contre {off['stall_s']} s sans (même réseau)")
 

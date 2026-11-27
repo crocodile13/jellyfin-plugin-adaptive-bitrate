@@ -1,6 +1,7 @@
 using AdaptiveBitrate.Core;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +16,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<SwitchLog>();
         services.AddSingleton<HlsFilter>();
         services.AddSingleton<PlaybackInfoFilter>();
+        services.AddSingleton<IStartupFilter, ScriptInjection>();
         services.Configure<MvcOptions>(o =>
         {
             o.Filters.AddService<HlsFilter>(int.MaxValue - 50);

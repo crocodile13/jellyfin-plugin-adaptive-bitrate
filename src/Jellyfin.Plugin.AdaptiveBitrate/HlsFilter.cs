@@ -150,7 +150,8 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
 
             var merged = MasterPlaylist.Merge(text, added);
             executed.Result = new FileContentResult(Encoding.UTF8.GetBytes(merged), original.ContentType);
-            _log.Started(Arg<string>(context, "playSessionId") ?? string.Empty, TitleOf(context), ClientOf(context), MasterPlaylist.Variants(merged).Count);
+            var offers = MasterPlaylist.Variants(merged).Select(v => new Offer((int)(v.Bandwidth / 1000), MasterPlaylist.Attribute(v.Info, "RESOLUTION") ?? string.Empty)).ToList();
+            _log.Started(Arg<string>(context, "playSessionId") ?? string.Empty, TitleOf(context), ClientOf(context), offers);
         }
         catch (Exception ex)
         {
