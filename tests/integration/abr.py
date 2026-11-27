@@ -127,8 +127,10 @@ def setup():
     print(f"::add-mask::{TOKEN}", flush=True)
     http("POST", "/Library/VirtualFolders", {"LibraryOptions": {"PathInfos": [{"Path": "/media/movies"}]}},
          {"name": "Movies", "collectionType": "movies", "refreshLibrary": "true"})
-    item = wait("analyse de la bibliothèque", lambda: (http("GET", "/Items", query={"IncludeItemTypes": "Movie", "Recursive": "true", "userId": USER_ID}) or {}).get("Items", [None])[0],
-                timeout=300, every=5)
+    def first_movie():
+        items = (http("GET", "/Items", query={"IncludeItemTypes": "Movie", "Recursive": "true", "userId": USER_ID}) or {}).get("Items") or []
+        return items[0] if items else None   # bibliothèque encore vide pendant l'analyse : nouvel essai
+    item = wait("analyse de la bibliothèque", first_movie, timeout=300, every=5)
     plugins = http("GET", "/Plugins")
     check(any(p.get("Id", "").replace("-", "") == PLUGIN_ID.replace("-", "") and p.get("Status") == "Active" for p in plugins),
           "plugin chargé et actif : " + ", ".join(f"{p['Name']} {p['Version']} ({p.get('Status')})" for p in plugins))
