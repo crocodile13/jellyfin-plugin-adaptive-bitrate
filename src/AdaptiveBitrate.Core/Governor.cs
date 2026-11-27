@@ -76,6 +76,7 @@ public sealed class Governor
     private double _lastChange = double.NegativeInfinity, _lastDown = double.NegativeInfinity;
     private double _anchorWall = double.NaN, _anchorMedia, _media, _lastRequest = double.NaN;
     private int _lastSegment = -2;
+    private bool _holding;
 
     /// <param name="bandwidth">Débit annoncé de chaque marche (bits/s), de la plus haute à la plus basse.</param>
     public Governor(IReadOnlyList<int> bandwidth)
@@ -96,7 +97,7 @@ public sealed class Governor
     /// <summary>Avance estimée du lecteur (secondes de vidéo demandées d'avance sur le temps écoulé), ou null au départ.</summary>
     public double? Lead { get; private set; }
 
-    /// <summary>Remontées retenues entièrement (la qualité en cours gardée).</summary>
+    /// <summary>Remontées retenues : fois où le serveur a commencé à garder la qualité en cours (pas chaque segment gardé).</summary>
     public int Held { get; private set; }
 
     /// <summary>Descentes anticipées par le serveur.</summary>
@@ -147,7 +148,12 @@ public sealed class Governor
             bool fits = !measured || rate >= _bandwidth[next] * o.Margin;
             if (early || !fits)
             {
-                Held++;
+                if (!_holding)
+                {
+                    Held++;
+                }
+
+                _holding = true;
                 return Serve(cur, Verdict.Held, now);
             }
 
@@ -175,6 +181,11 @@ public sealed class Governor
 
     private Decision Serve(int rung, Verdict v, double now)
     {
+        if (v != Verdict.Held || rung != Current)
+        {
+            _holding = v == Verdict.Held && rung == Current;
+        }
+
         if (rung != Current)
         {
             if (rung > Current)
