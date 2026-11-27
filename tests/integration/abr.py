@@ -21,6 +21,9 @@ import urllib.request
 from pathlib import Path
 
 BASE = os.environ.get("ABR_URL", "http://127.0.0.1:8096")
+# relais Toxiproxy (débit limité au niveau de la connexion, comme un vrai réseau : le serveur le voit en envoyant)
+PROXY = os.environ.get("ABR_PROXY", "http://127.0.0.1:8097")
+TOXI = os.environ.get("ABR_TOXI", "http://127.0.0.1:8474")
 OUT = Path(os.environ.get("ABR_OUT", "abr-out"))
 PROBE = Path(os.environ.get("ABR_PROBE", "probe"))      # monté dans le conteneur en /probe (ffprobe de Jellyfin)
 JF = os.environ.get("ABR_CONTAINER", "jf")
@@ -310,12 +313,24 @@ DROP = [(30, 90, 1600)]                                   # une baisse d'une min
 YOYO = [(25, 45, 1600), (60, 80, 1600)]                   # un réseau qui fait le yoyo
 
 
-def browser_run(item, label: str, profile=None, length=130):
-    """Lecture de `length` s sous un profil de réseau (par défaut une baisse à 1,6 Mb/s de 30 à 90 s). Coupures, qualités, redémarrages."""
+def toxi(kbps):
+    """Débit du relais : kb/s (limite au niveau de la connexion), ou -1 pour le réseau libre."""
+    try:
+        http("DELETE", TOXI + "/proxies/jf/toxics/bw")
+    except HttpError:
+        pass
+    if kbps > 0:
+        http("POST", TOXI + "/proxies/jf/toxics", {"name": "bw", "type": "bandwidth", "stream": "downstream", "attributes": {"rate": max(1, kbps // 8)}})
+
+
+def browser_run(item, label: str, profile=None, length=130, proxy=False):
+    """Lecture de `length` s sous un profil de réseau (par défaut une baisse à 1,6 Mb/s de 30 à 90 s). Coupures, qualités,
+    redémarrages. proxy : le débit est limité par le relais (connexion), sinon par Chrome (après réception)."""
     profile = profile or DROP
+    base = PROXY if proxy else BASE
     from playwright.sync_api import sync_playwright
     info = http("GET", "/System/Info/Public")
-    creds = {"Servers": [{"Id": info["Id"], "ManualAddress": BASE, "LocalAddress": BASE, "UserId": USER_ID, "AccessToken": TOKEN,
+    creds = {"Servers": [{"Id": info["Id"], "ManualAddress": base, "LocalAddress": base, "UserId": USER_ID, "AccessToken": TOKEN,
                           "LastConnectionMode": 2, "DateLastAccessed": int(time.time() * 1000)}]}
     res = {"label": label, "variants": [], "playbackinfo": 0, "stall_s": 0.0, "stalls": 0, "errors": []}
     measuring = [False]
@@ -335,7 +350,7 @@ def browser_run(item, label: str, profile=None, length=130):
                 res["variants"].append((round(time.time() - start, 1), q.get("videobitrate", "copie")))
         start = time.time()
         page.on("request", on_request)
-        page.goto(f"{BASE}/web/#/details?id={item['Id']}", wait_until="domcontentloaded")
+        page.goto(f"{base}/web/#/details?id={item['Id']}", wait_until="domcontentloaded")
         page.wait_for_selector(".btnPlay", timeout=90000)
         page.click(".btnPlay")
         page.wait_for_function("() => { const v = document.querySelector('video'); return v && v.currentTime > 1; }", timeout=120000)
@@ -344,12 +359,17 @@ def browser_run(item, label: str, profile=None, length=130):
         start = time.time()
         measuring[0] = True
         samples, phase_of = [], lambda s: "bridé" if any(a <= s < b for a, b, _ in profile) else "libre"
-        last_t, waiting_since = None, None
+        last_t, waiting_since, applied = None, None, None
         while time.time() - start < length:
             s = time.time() - start
             kbps = next((k for a, b, k in profile if a <= s < b), -1)
-            cdp.send("Network.emulateNetworkConditions", {"offline": False, "latency": 20, "downloadThroughput": kbps * 1000 / 8 if kbps > 0 else -1,
-                                                          "uploadThroughput": -1})
+            if proxy:
+                if kbps != applied:
+                    toxi(kbps)
+                    applied = kbps
+            else:
+                cdp.send("Network.emulateNetworkConditions", {"offline": False, "latency": 20, "downloadThroughput": kbps * 1000 / 8 if kbps > 0 else -1,
+                                                              "uploadThroughput": -1})
             v = page.evaluate(VIDEO_JS)
             if v:
                 stuck = last_t is not None and abs(v["t"] - last_t) < 0.05 and not v["paused"] and not v["ended"]
@@ -374,6 +394,8 @@ def browser_run(item, label: str, profile=None, length=130):
         res["overlay"] = page.evaluate("() => { const p = document.querySelector('.abr-overlay'); return p && p.style.display !== 'none' ? p.textContent : null; }")
         page.screenshot(path=str(OUT / f"lecture-{label}.png"))
         b.close()
+    if proxy:
+        toxi(-1)
     res["samples"] = samples
     return res
 
@@ -387,10 +409,10 @@ def browser_checks(item):
     configure(MaxRungs=4)
     # réseau qui fait le yoyo : échelle seule (le lecteur décide), puis pilotage par le serveur
     configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4, ServerControl=False, DebugOverlay="Off")
-    yoyo_player = browser_run(item, "yoyo-lecteur", YOYO, 110)
+    yoyo_player = browser_run(item, "yoyo-lecteur", YOYO, 110, proxy=True)
     yoyo_player["server"] = last_session()
     configure(ServerControl=True, HoldAfterDownSeconds=30, MinChangeSeconds=10, AnticipateDown=True, DebugOverlay="Admins")
-    yoyo_server = browser_run(item, "yoyo-serveur", YOYO, 110)
+    yoyo_server = browser_run(item, "yoyo-serveur", YOYO, 110, proxy=True)
     yoyo_server["server"] = last_session()
     configure(ServerControl=False)
     report["yoyo"] = {"player": {k: v for k, v in yoyo_player.items() if k != "samples"}, "server": {k: v for k, v in yoyo_server.items() if k != "samples"}}
@@ -442,7 +464,7 @@ def write_report():
         L.append(f"| Qualités demandées (s, débit) | {br['with'].get('variants')} | {br['without'].get('variants')} |")
     yo = report.get("yoyo")
     if yo:
-        L += ["", "| Réseau en yoyo (1,6 Mb/s de 25 à 45 s et de 60 à 80 s) | Le lecteur décide | Le serveur pilote |", "|---|---|---|"]
+        L += ["", "| Réseau en yoyo (1,6 Mb/s de 25 à 45 s et de 60 à 80 s, limité au niveau de la connexion) | Le lecteur décide | Le serveur pilote |", "|---|---|---|"]
         for k, name in (("stall_s", "Coupures (s)"), ("stalls", "Nombre de coupures"), ("playbackinfo", "Demandes de lecture"), ("position", "Position atteinte (s)"), ("video_errors", "Erreurs vidéo")):
             L.append(f"| {name} | {yo['player'].get(k)} | {yo['server'].get(k)} |")
         for k, name in (("steps", "Qualités servies (kb/s)"), ("measure", "Mesure du serveur")):
