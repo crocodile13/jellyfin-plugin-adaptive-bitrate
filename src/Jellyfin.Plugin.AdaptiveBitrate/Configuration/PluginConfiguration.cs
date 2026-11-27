@@ -77,7 +77,11 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Surcouche de diagnostic pendant une lecture dans le navigateur (qualité, débit reçu, tampon…).</summary>
     public DebugOverlay DebugOverlay { get; set; } = DebugOverlay.Off;
 
-    /// <summary>Le serveur pilote la qualité envoyée (sinon il mesure seulement, pour la surcouche et la page).</summary>
+    /// <summary>
+    /// Le serveur pilote la qualité envoyée (sinon il mesure seulement, pour la surcouche et la page). Coupé par défaut :
+    /// vérifié dans le navigateur (changements de qualité réduits d'un quart, sans coupure de plus), pas encore sur les
+    /// applications TV.
+    /// </summary>
     public bool ServerControl { get; set; }
 
     /// <summary>Après une descente, secondes avant de laisser remonter.</summary>
@@ -86,8 +90,8 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Secondes au moins entre deux changements décidés par le serveur.</summary>
     public int MinChangeSeconds { get; set; } = 10;
 
-    /// <summary>Descendre d'avance quand le débit mesuré ne suffit plus.</summary>
-    public bool AnticipateDown { get; set; } = true;
+    /// <summary>Descendre d'avance quand le débit mesuré ne suffit plus (coupé : voir <see cref="GovernorOptions.AnticipateDown"/>).</summary>
+    public bool AnticipateDown { get; set; }
 
     /// <summary>Marge de débit (une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge).</summary>
     public double Margin { get; set; } = 1.25;

@@ -8,7 +8,7 @@ public class GovernorTests
 {
     // échelle d'un fichier à 8 Mb/s : 8,1 · 4,5 · 2,5 · 1,5 · 0,9 Mb/s (débits annoncés, audio compris)
     private static readonly int[] Ladder = { 8_100_000, 4_500_000, 2_500_000, 1_500_000, 900_000 };
-    private static readonly GovernorOptions On = new() { Enabled = true };
+    private static readonly GovernorOptions On = new() { Enabled = true, AnticipateDown = true };
 
     /// <summary>Envoi d'un segment de 4 s à la qualité <paramref name="rung"/> sur une connexion à <paramref name="mbps"/> Mb/s.</summary>
     private static void Send(Governor g, int rung, double mbps) => g.Sent(Ladder[rung] / 8 * 4, Ladder[rung] * 4 / (mbps * 1e6));

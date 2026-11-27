@@ -294,16 +294,26 @@ def switch(base, from_segs, to_segs, k, tolerance=0.15):
     aa = [(s.get("codec_name"), s.get("channels"), s.get("sample_rate")) for s in pa.get("streams", []) if s.get("codec_type") == "audio"]
     ab = [(s.get("codec_name"), s.get("channels"), s.get("sample_rate")) for s in pb.get("streams", []) if s.get("codec_type") == "audio"]
     key = any("K" in (p.get("flags") or "") for p in (pb.get("packets") or [])[:1])
+
+    def av(pr):   # début de l'image moins début du son dans le segment (synchro image / son)
+        st = {x.get("codec_type"): float(x.get("start_time") or 0) for x in pr.get("streams", []) if x.get("start_time") not in (None, "N/A")}
+        return st["video"] - st["audio"] if "video" in st and "audio" in st else None
+    da, db = av(pa), av(pb)
     report.setdefault("switches", []).append({"k": k, "end_a": round(end_a, 3), "start_b": round(start_b, 3), "audio_a": aa, "audio_b": ab})
     check(abs(start_b - end_a) <= tolerance, f"changement de qualité au segment {k + 1} : fin {end_a:.3f} s, suite à {start_b:.3f} s")
     check(bool(va) and key, f"segment {k + 1} de la nouvelle qualité : commence par une image clé")
     check(aa == ab and bool(aa), f"segment {k + 1} : même audio des deux côtés {aa}")
+    check(da is not None and db is not None and abs(da - db) <= 0.04,
+          f"segment {k + 1} : synchro image / son identique des deux côtés ({da if da is None else round(da * 1000)} ms, {db if db is None else round(db * 1000)} ms)")
 
 
 # ------------------------------------------------------------------ lecture dans un vrai navigateur
 
 VIDEO_JS = """() => { const v = document.querySelector('video'); if (!v) return null;
-  return { t: v.currentTime, err: v.error ? v.error.code : 0, paused: v.paused, ready: v.readyState, ended: v.ended,
+  const subEl = document.querySelector('.videoSubtitlesInner, .videoSubtitles');
+  let sub = subEl ? subEl.textContent.trim() : '';
+  if (!sub) { for (const tt of v.textTracks || []) { if (tt.mode === 'showing' && tt.activeCues && tt.activeCues.length) { sub = tt.activeCues[0].text; } } }
+  return { t: v.currentTime, err: v.error ? v.error.code : 0, sub, paused: v.paused, ready: v.readyState, ended: v.ended,
            buf: v.buffered.length ? v.buffered.end(v.buffered.length - 1) - v.currentTime : 0,
            audio: v.webkitAudioDecodedByteCount || 0, frames: v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().totalVideoFrames : 0 }; }"""
 
@@ -394,6 +404,12 @@ def browser_run(item, label: str, profile=None, length=130, shaped=False):
         res["position"] = samples[-1]["t"] if samples else 0
         res["audio_growing"] = len(samples) > 10 and samples[-1]["audio"] > samples[len(samples) // 2]["audio"] > samples[0]["audio"]
         res["video_errors"] = sorted(set(x["err"] for x in samples if x.get("err")))
+        # sous-titres : la ligne affichée est celle du moment (« Subtitle line N » de N*5-5 à N*5-1 s) ; on ignore les
+        # instants à moins d'une demi-seconde d'un changement de ligne (relevé toutes les secondes)
+        subs = [x for x in samples if x.get("sub")]
+        bad = [(round(x["t"], 1), x["sub"]) for x in subs
+               if (x["t"] % 5) < 3.5 and (x["t"] % 5) > 0.5 and x["sub"] != f"Subtitle line {int(x['t'] // 5) + 1}"]
+        res["subtitles"] = {"shown": len(subs), "wrong": bad[:5], "wrong_count": len(bad)}
         res["overlay"] = page.evaluate("() => { const p = document.querySelector('.abr-overlay'); return p && p.style.display !== 'none' ? p.textContent : null; }")
         page.screenshot(path=str(OUT / f"lecture-{label}.png"))
         b.close()
@@ -403,7 +419,15 @@ def browser_run(item, label: str, profile=None, length=130, shaped=False):
     return res
 
 
+def subtitles_on():
+    """Sous-titres toujours affichés pour le compte de test (langue anglaise : la piste SRT de la vidéo)."""
+    cfg = http("GET", f"/Users/{USER_ID}").get("Configuration") or {}
+    cfg.update(SubtitleMode="Always", SubtitleLanguagePreference="eng")
+    http("POST", f"/Users/{USER_ID}/Configuration", cfg)
+
+
 def browser_checks(item):
+    subtitles_on()
     # même flux HLS dans les deux essais (vidéo copiée en tête) : avec l'échelle, puis sans (aucune qualité dessous)
     configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4, DebugOverlay="Admins")
     on = browser_run(item, "echelle")
@@ -426,6 +450,8 @@ def browser_checks(item):
     check(not yoyo_server["video_errors"] and not [e for e in yoyo_server["errors"] if "recul" in e],
           f"pilotage par le serveur : aucune erreur de lecture ({yoyo_server['video_errors']}, {yoyo_server['errors'][:2]})")
     check(yoyo_server["playbackinfo"] == 0, "pilotage par le serveur : aucun redémarrage de la lecture")
+    sts = yoyo_server.get("subtitles") or {}
+    check(sts.get("shown", 0) >= 20 and sts.get("wrong_count", 1) == 0, f"pilotage par le serveur : sous-titres synchrones ({sts})")
     check(changes(ss) <= changes(sp), f"pilotage par le serveur : changements de qualité {changes(ss)} contre {changes(sp)} sans")
     check(yoyo_server["stall_s"] <= yoyo_player["stall_s"] + 2,
           f"pilotage par le serveur : coupures {yoyo_server['stall_s']} s contre {yoyo_player['stall_s']} s sans (réseau en yoyo)")
@@ -436,6 +462,9 @@ def browser_checks(item):
     check(on["playbackinfo"] == 0, f"navigateur : aucun redémarrage de la lecture ({on['playbackinfo']} nouvelle demande de lecture)")
     check(not [e for e in on["errors"] if "recul" in e], f"navigateur : la lecture n'a jamais reculé ({on['errors'][:3]})")
     check(on["audio_growing"], "navigateur : le son continue d'être décodé pendant toute la lecture")
+    st = on.get("subtitles") or {}
+    check(st.get("shown", 0) >= 20 and st.get("wrong_count", 1) == 0,
+          f"navigateur : sous-titres affichés à l'écran et synchrones pendant les changements de qualité ({st})")
     check(bool(on.get("overlay")) and "Mb/s" in (on.get("overlay") or ""), f"surcouche de diagnostic affichée pendant la lecture ({(on.get('overlay') or '')[:160]})")
     check(off.get("overlay") is None or "Mb/s" in off.get("overlay"), "surcouche : rien d'anormal sans échelle")
     check(on["stall_s"] <= max(3.0, off["stall_s"] * 0.5),
@@ -462,7 +491,7 @@ def write_report():
     br = report.get("browser")
     if br:
         L += ["", "| Navigateur (réseau libre 30 s, 1,6 Mb/s 60 s, libre 40 s) | Avec l'échelle | Sans |", "|---|---|---|"]
-        for k, name in (("stall_s", "Coupures (s)"), ("stalls", "Nombre de coupures"), ("playbackinfo", "Demandes de lecture"), ("position", "Position atteinte (s)")):
+        for k, name in (("stall_s", "Coupures (s)"), ("stalls", "Nombre de coupures"), ("playbackinfo", "Demandes de lecture"), ("position", "Position atteinte (s)"), ("subtitles", "Sous-titres (affichés, faux)")):
             L.append(f"| {name} | {br['with'].get(k)} | {br['without'].get(k)} |")
         L.append(f"| Qualités demandées (s, débit) | {br['with'].get('variants')} | {br['without'].get('variants')} |")
     yo = report.get("yoyo")

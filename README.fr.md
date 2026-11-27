@@ -15,11 +15,13 @@ Une qualité qui suit le réseau, sans coupure. Jellyfin mesure la connexion une
 
 ## Comment ça marche
 
-- Quand Jellyfin construit une playlist HLS, j'ajoute des qualités plus basses sous celle qu'il a choisie (par défaut 4, chacune à 60 % du débit de celle du dessus, jusqu'à 700 kb/s, avec une taille d'image adaptée au débit).
+- Quand Jellyfin construit une playlist HLS, j'ajoute des qualités plus basses sous celle qu'il a choisie, toujours jusqu'à 700 kb/s, en marches régulières (chacune au moins à la moitié du débit de celle du dessus, 4 au plus), avec une taille d'image adaptée au débit.
 - **Chaque qualité est produite par Jellyfin lui-même**, avec la même piste audio, les mêmes sous-titres (incrustés compris) et la même session de lecture : seuls le débit et la taille de l'image changent.
 - **Le lecteur change de qualité tout seul** : hls.js dans le navigateur, ExoPlayer sur Android, AVPlayer sur les appareils Apple. Il charge et met en mémoire la nouvelle qualité *avant* de basculer, à la limite d'un segment : ni coupure ni redémarrage, le son et les sous-titres continuent.
 - **Une qualité qui ne sert pas ne coûte rien** : elle n'est encodée que si un lecteur y passe, et Jellyfin arrête l'encodage précédent dès que le nouveau démarre.
 - En option : faire passer les lecteurs distants par le flux adaptatif plutôt que par la lecture directe du fichier (la vidéo est copiée telle quelle tant que le réseau suit, et transcodée seulement quand le lecteur descend).
+- En option : **pilotage par le serveur**. Le serveur chronomètre l'envoi de chaque segment et peut attendre avant de laisser remonter la qualité après une baisse (30 s par défaut) : sur un réseau qui fait le yoyo, un quart de changements de qualité en moins, sans coupure de plus (mesuré dans le navigateur ; coupé par défaut tant que ce n'est pas vérifié sur les applications TV).
+- **Surcouche de diagnostic** (coupée par défaut) : pendant une lecture dans le navigateur, la qualité téléchargée, le débit réellement reçu, le tampon, l'image affichée, les images perdues et les derniers changements.
 
 Chaque changement de qualité est vérifié sur un vrai Jellyfin dans la CI, sur les segments eux-mêmes (la qualité suivante commence exactement où la précédente s'arrête, sur une image clé, avec le même audio) et dans Google Chrome avec le réseau bridé pendant la lecture.
 
@@ -37,10 +39,12 @@ Chaque changement de qualité est vérifié sur un vrai Jellyfin dans la CI, sur
 |---|---|---|
 | Lecteurs concernés | hors du réseau local | le réseau local suffit presque toujours ; « tous » aide avec un Wi-Fi faible ou du CPL |
 | Qualités plus basses proposées | 4 | combien de qualités sous celle de départ (0 = aucune) |
-| Écart entre deux qualités | 0,6 | chaque qualité a ce rapport du débit de celle du dessus |
+| Écart maximal entre deux qualités | 0,5 | chaque qualité a au moins cette part du débit de celle du dessus ; l'échelle descend toujours jusqu'au minimum |
 | Débit vidéo minimal | 700 kb/s | aucune qualité en dessous |
 | Qualités plus hautes proposées | 0 | au-dessus de la qualité de départ, quand le réseau s'améliore (jamais au-delà du fichier ; dépasse la limite réglée dans le lecteur) |
 | Flux adaptatif plutôt que lecture directe | coupé | les lecteurs distants reçoivent le flux adaptatif au lieu du fichier (expérimental) |
+| Pilotage par le serveur | coupé | attente avant de remonter (30 s), écart minimal entre deux changements (10 s), marge de débit (1,25), descente anticipée en option |
+| Surcouche de diagnostic | coupée | administrateurs seulement, ou tout le monde |
 | Applications exclues | aucune | applications qui gardent le flux de Jellyfin tel quel |
 
 Plus de détails dans le [wiki](https://github.com/crocodile13/jellyfin-plugin-adaptive-bitrate/wiki/Accueil-fr).

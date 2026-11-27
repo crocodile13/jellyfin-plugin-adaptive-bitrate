@@ -210,7 +210,7 @@
                     $('abrServerControl').checked = !!c.ServerControl;
                     $('abrHoldAfterDownSeconds').value = c.HoldAfterDownSeconds;
                     $('abrMinChangeSeconds').value = c.MinChangeSeconds;
-                    $('abrAnticipateDown').checked = c.AnticipateDown !== false;
+                    $('abrAnticipateDown').checked = !!c.AnticipateDown;
                     $('abrMargin').value = c.Margin;
                     $('abrMinSamples').value = c.MinSamples;
                     $('abrExcludedClients').value = c.ExcludedClients || '';
