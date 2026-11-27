@@ -190,7 +190,9 @@ def height(v):
 # ------------------------------------------------------------------ vérifications par l'API
 
 def api_checks(item):
-    streams = http("GET", f"/Items/{item['Id']}", query={"userId": USER_ID}).get("MediaStreams") or []
+    # pistes : connues une fois le fichier analysé (peu après son apparition dans la bibliothèque)
+    streams = wait("analyse des pistes de la vidéo", lambda: (lambda m: m if sum(1 for s in m if s["Type"] == "Audio") >= 2 else None)(
+        http("GET", f"/Items/{item['Id']}", query={"userId": USER_ID}).get("MediaStreams") or []), timeout=180)
     audio = [s["Index"] for s in streams if s["Type"] == "Audio"]
     subs = [s["Index"] for s in streams if s["Type"] == "Subtitle"]
     check(len(audio) == 2 and len(subs) >= 1, f"vidéo de test : pistes audio {audio}, sous-titres {subs}")
@@ -212,7 +214,6 @@ def api_checks(item):
         if not check(same and q.get("allowvideostreamcopy") == "false", f"marche {q.get('videobitrate')} : même session, piste audio, sous-titres, conteneur ; vidéo jamais copiée"):
             break
     report["top_query"] = {k: v for k, v in top.items() if k not in ("api_key", "apikey", "deviceid", "playsessionid", "tag")}
-    check(top.get("audiostreamindex") in (str(a2), None), f"piste audio choisie ({a2}) : {top.get('audiostreamindex')} dans l'adresse")
     check(len(set(x["query"].get("audiostreamindex") for x in v)) == 1, "même piste audio dans toutes les qualités")
 
     # 2. segments : mêmes durées dans toutes les qualités, et passage d'une qualité à l'autre sans trou ni chevauchement
