@@ -11,20 +11,23 @@ public class LadderTests
     private static readonly SourceVideo Hd = new(1920, 1080, 12_000_000, 23.976);
 
     [Fact]
-    public void RungsGoDownByTheStepUntilTheMinimumWithShrinkingImages()
+    public void RungsAlwaysReachTheMinimumInRegularStepsNoWiderThanTheMaximumGap()
     {
         var r = Ladder.Rungs(8_000_000, Hd, new LadderOptions());
-        // 4 marches au plus : l'écart s'élargit pour que la dernière atteigne le débit minimal (700 kb/s)
+        // 8 Mb/s, écart maximal 0,5 : quatre marches régulières jusqu'à 700 kb/s (4,35 · 2,37 · 1,29 · 0,70)
         Assert.Equal(4, r.Count);
         Assert.InRange(r[^1].VideoBitrate, 699_000, 701_000);
         Assert.All(r.Zip(r.Skip(1)), p => Assert.InRange(p.Second.VideoBitrate / (double)p.First.VideoBitrate, 0.54, 0.55));
-        Assert.All(r, x => Assert.Equal((int)Math.Round(x.MaxHeight * 16 / 9.0 / 2) * 2, x.MaxWidth));
-        // peu de marches nécessaires : l'écart réglé (0,6) est gardé
-        Assert.Equal(new[] { 1_200_000, 720_000 }, Ladder.Rungs(2_000_000, Hd, new LadderOptions()).Select(x => x.VideoBitrate));
         Assert.True(r.Zip(r.Skip(1)).All(p => p.Second.MaxHeight < p.First.MaxHeight), string.Join(" ", r));
         Assert.All(r, x => Assert.True(x.MaxHeight % 2 == 0 && x.MaxHeight <= 1080));
-        // rien sous le minimum
-        Assert.Empty(Ladder.Rungs(1_000_000, Hd, new LadderOptions()));
+        Assert.All(r, x => Assert.Equal((int)Math.Round(x.MaxHeight * 16 / 9.0 / 2) * 2, x.MaxWidth));
+        // 2 Mb/s : deux marches suffisent (rapport 0,59, plus doux que l'écart maximal)
+        Assert.Equal(new[] { 1_183_216, 700_000 }, Ladder.Rungs(2_000_000, Hd, new LadderOptions()).Select(x => x.VideoBitrate));
+        // juste au-dessus du minimum : une seule marche ; au minimum : aucune
+        Assert.Equal(new[] { 700_000 }, Ladder.Rungs(1_000_000, Hd, new LadderOptions()).Select(x => x.VideoBitrate));
+        Assert.Empty(Ladder.Rungs(750_000, Hd, new LadderOptions()));
+        // écart maximal plus petit : plus de marches, toujours jusqu'au minimum
+        Assert.Equal(5, Ladder.Rungs(8_000_000, Hd, new LadderOptions { Step = 0.7, MaxRungs = 5 }).Count);
     }
 
     [Fact]
@@ -41,13 +44,13 @@ public class LadderTests
     [Fact]
     public void WithoutARequestedBitrateTheFileBitrateIsTheTopAndAboveRungsStayUnderTheFile()
     {
-        Assert.InRange(Ladder.Rungs(null, Hd, new LadderOptions())[0].VideoBitrate, 5_800_000, 6_000_000);   // copie : le fichier (12 Mb/s), écart élargi
+        Assert.InRange(Ladder.Rungs(null, Hd, new LadderOptions())[0].VideoBitrate, 5_800_000, 6_000_000);   // copie : le fichier (12 Mb/s)
         // copie demandée par le lecteur web avec un plafond démesuré (866 Mb/s mesurés) : l'échelle part du fichier
         Assert.Equal(Ladder.Rungs(null, Hd, new LadderOptions())[0], Ladder.Rungs(866_527_646, Hd, new LadderOptions())[0]);
         Assert.Empty(Ladder.Rungs(null, new SourceVideo(0, 0, 0, 0), new LadderOptions()));
         var o = new LadderOptions { RungsAbove = 2 };
         var r = Ladder.Rungs(5_000_000, Hd, o);
-        Assert.Equal(new[] { 8_333_333 }, r.TakeWhile(x => x.VideoBitrate > 5_000_000).Select(x => x.VideoBitrate));   // 13,9 Mb/s dépasserait le fichier
+        Assert.Equal(new[] { 10_000_000 }, r.TakeWhile(x => x.VideoBitrate > 5_000_000).Select(x => x.VideoBitrate));   // 20 Mb/s dépasserait le fichier (12)
         Assert.Empty(Ladder.Rungs(5_000_000, Hd, new LadderOptions { RungsAbove = 2, AboveCap = 6_000_000, MaxRungs = 0 }));
     }
 
@@ -55,7 +58,7 @@ public class LadderTests
     public void OutOfRangeSettingsAreBounded()
     {
         var s = new LadderOptions { MaxRungs = 99, Step = double.NaN, MinBitrate = -5, RungsAbove = 9, AboveCap = -1 }.Sanitized();
-        Assert.Equal((8, 0.6, 100_000, 3, 0), (s.MaxRungs, s.Step, s.MinBitrate, s.RungsAbove, s.AboveCap));
+        Assert.Equal((8, 0.5, 100_000, 3, 0), (s.MaxRungs, s.Step, s.MinBitrate, s.RungsAbove, s.AboveCap));
     }
 }
 
@@ -131,7 +134,7 @@ public class SwitchLogTests
     {
         var log = new SwitchLog();
         var t = new DateTime(2026, 11, 27, 20, 0, 0, DateTimeKind.Utc);
-        log.Started("s1", "Film", "Jellyfin Web", 5);
+        log.Started("s1", "Film", "Jellyfin Web", new[] { new Offer(8100, "1920x1080"), new Offer(4500, "1280x720") });
         log.Requested("s1", 0, t);
         log.Requested("s1", 0, t.AddSeconds(5));          // même marche : ignorée
         log.Requested("s1", 2_880_000, t.AddSeconds(30));
@@ -141,6 +144,9 @@ public class SwitchLogTests
         var s = log.Recent().Single();
         Assert.Equal(4, s.Steps.Count);
         Assert.Equal((2, 1), (s.Down, s.Up));
+        Assert.Equal(2, s.Offered);
+        Assert.Equal("1280x720", log.Get("s1")!.Offers[1].Resolution);
+        Assert.Null(log.Get("inconnue"));
     }
 
     [Fact]
@@ -149,7 +155,7 @@ public class SwitchLogTests
         var log = new SwitchLog();
         for (int i = 0; i < 100; i++)
         {
-            log.Started("s" + i, "t", "c", 3);
+            log.Started("s" + i, "t", "c", Array.Empty<Offer>());
         }
 
         for (int i = 0; i < 500; i++)

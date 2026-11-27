@@ -1,7 +1,11 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using AdaptiveBitrate.Core;
+using Jellyfin.Data;
+using Jellyfin.Plugin.AdaptiveBitrate.Configuration;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,8 +17,59 @@ namespace Jellyfin.Plugin.AdaptiveBitrate.Api;
 public sealed class AdaptiveBitrateController : ControllerBase
 {
     private readonly SwitchLog _log;
+    private readonly IUserManager _users;
 
-    public AdaptiveBitrateController(SwitchLog log) => _log = log;
+    public AdaptiveBitrateController(SwitchLog log, IUserManager users)
+    {
+        _log = log;
+        _users = users;
+    }
+
+    /// <summary>Script de la surcouche de diagnostic. Public, comme tout fichier de l'interface web ; ne montre rien sans réglage.</summary>
+    [HttpGet("overlay.js")]
+    [AllowAnonymous]
+    [Produces("application/javascript")]
+    public ActionResult OverlayScript()
+    {
+        var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(typeof(Plugin).Namespace + ".Web.overlay.js");
+        if (s is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "no-cache";
+        return File(s, "application/javascript; charset=utf-8");
+    }
+
+    /// <summary>
+    /// Surcouche de diagnostic : la lecture du compte connecté (qualités proposées, changements) et les textes de la
+    /// surcouche ; refusé (403) si la surcouche n'est pas ouverte à ce compte. Une lecture d'un autre compte n'est jamais
+    /// renvoyée : seule celle dont l'identifiant est donné, et seulement si elle est connue du journal.
+    /// </summary>
+    [HttpGet("Session")]
+    [Authorize]
+    public ActionResult Session([FromQuery] string? playSessionId, [FromQuery] string? lang)
+    {
+        var cfg = Plugin.Instance?.Configuration;
+        var user = Guid.TryParse(User.FindFirst("Jellyfin-UserId")?.Value, out var g) ? _users.GetUserById(g) : null;
+        bool admin = user is not null && user.HasPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsAdministrator);
+        bool allowed = cfg is { Enabled: true } && (cfg.DebugOverlay == DebugOverlay.Everyone || (cfg.DebugOverlay == DebugOverlay.Admins && admin));
+        if (!allowed)
+        {
+            return StatusCode(403);
+        }
+
+        var s = string.IsNullOrEmpty(playSessionId) ? null : _log.Get(playSessionId);
+        return Ok(new
+        {
+            texts = Texts.Dictionary(lang),
+            session = s is null ? null : new
+            {
+                title = s.Title, offers = s.Offers.Select(o => new { kbps = o.Kbps, resolution = o.Resolution }),
+                steps = s.Steps.Select(p => new { at = p.At, kbps = p.VideoBitrate / 1000 }), down = s.Down, up = s.Up,
+            },
+        });
+    }
 
     /// <summary>Lectures récentes et leurs changements de qualité ; compatibilité avec Jellyfin.</summary>
     [HttpGet("Status")]
@@ -32,6 +87,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             sessions = _log.Recent().Select(x => new
             {
                 title = x.Title, client = x.Client, offered = x.Offered, down = x.Down, up = x.Up,
+                offers = x.Offers.Select(o => new { kbps = o.Kbps, resolution = o.Resolution }),
                 steps = x.Steps.Select(p => new { at = p.At, kbps = p.VideoBitrate / 1000 }),
             }),
         });

@@ -37,6 +37,12 @@ public class TextsTests
             res.Add(m.Groups[1].Value.Replace("\\'", "'", StringComparison.Ordinal));
         }
 
+        var overlay = File.ReadAllText(Path.Combine(root, "src", "Jellyfin.Plugin.AdaptiveBitrate", "Web", "overlay.js"));
+        foreach (Match m in Regex.Matches(overlay, @"\btrf?\('((?:[^'\\]|\\.)*)'"))
+        {
+            res.Add(m.Groups[1].Value.Replace("\\'", "'", StringComparison.Ordinal));
+        }
+
         var policy = File.ReadAllText(Path.Combine(root, "src", "AdaptiveBitrate.Core", "Policy.cs"));
         foreach (Match m in Regex.Matches(policy, "return \"([^\"]+)\";"))
         {

@@ -51,12 +51,12 @@
                             <div class="inputContainer" data-key="MaxRungs">
                                 <label class="inputLabel" for="abrMaxRungs" data-t="Qualités plus basses proposées">Qualités plus basses proposées</label>
                                 <input is="emby-input" type="number" id="abrMaxRungs" min="0" max="8" step="1">
-                                <div class="fieldDescription" data-t="Nombre maximal de qualités sous celle de départ. 0 = aucune. Par défaut : 4.">Nombre maximal de qualités sous celle de départ. 0 = aucune. Par défaut : 4.</div>
+                                <div class="fieldDescription" data-t="Nombre maximal de qualités sous celle de départ ; s'il en faudrait plus pour atteindre le débit minimal, l'écart s'élargit. 0 = aucune. Par défaut : 4.">Nombre maximal de qualités sous celle de départ ; s'il en faudrait plus pour atteindre le débit minimal, l'écart s'élargit. 0 = aucune. Par défaut : 4.</div>
                             </div>
                             <div class="inputContainer" data-key="Step">
-                                <label class="inputLabel" for="abrStep" data-t="Écart entre deux qualités">Écart entre deux qualités</label>
+                                <label class="inputLabel" for="abrStep" data-t="Écart maximal entre deux qualités">Écart maximal entre deux qualités</label>
                                 <input is="emby-input" type="number" id="abrStep" min="0.3" max="0.9" step="0.05">
-                                <div class="fieldDescription" data-t="Chaque qualité a ce rapport du débit de celle du dessus (0,6 = 60 %). Plus haut : des marches plus douces mais plus nombreuses. Par défaut : 0,6.">Chaque qualité a ce rapport du débit de celle du dessus (0,6 = 60 %). Plus haut : des marches plus douces mais plus nombreuses. Par défaut : 0,6.</div>
+                                <div class="fieldDescription" data-t="Chaque qualité a au moins cette part du débit de celle du dessus (0,5 = la moitié), et l'échelle descend toujours jusqu'au débit minimal, en marches régulières. Un rapport plutôt qu'un pas en Mb/s : la perte de qualité perçue suit le rapport des débits (de 10 à 9,5 Mb/s ne se voit pas, de 1 à 0,5 Mb/s si). Plus haut : des marches plus douces mais plus nombreuses. Par défaut : 0,5.">Chaque qualité a au moins cette part du débit de celle du dessus (0,5 = la moitié), et l'échelle descend toujours jusqu'au débit minimal, en marches régulières. Un rapport plutôt qu'un pas en Mb/s : la perte de qualité perçue suit le rapport des débits (de 10 à 9,5 Mb/s ne se voit pas, de 1 à 0,5 Mb/s si). Plus haut : des marches plus douces mais plus nombreuses. Par défaut : 0,5.</div>
                             </div>
                             <div class="inputContainer" data-key="MinBitrateKbps">
                                 <label class="inputLabel" for="abrMinBitrateKbps" data-t="Débit vidéo minimal (kb/s)">Débit vidéo minimal (kb/s)</label>
@@ -112,6 +112,22 @@
                         </div>
                     </div>
 
+                    <div class="abr-box">
+                        <h3 data-t="Diagnostic">Diagnostic</h3>
+                        <p data-t="Pendant une lecture dans le navigateur, une surcouche montre la qualité en cours, le débit réellement reçu segment par segment, le tampon d'avance, l'image affichée, les images perdues, les qualités proposées et les derniers changements. Pour comprendre une coupure ; les applications TV ne l'affichent pas.">Pendant une lecture dans le navigateur, une surcouche montre la qualité en cours, le débit réellement reçu segment par segment, le tampon d'avance, l'image affichée, les images perdues, les qualités proposées et les derniers changements. Pour comprendre une coupure ; les applications TV ne l'affichent pas.</p>
+                        <div class="abr-grid">
+                            <div class="selectContainer" data-key="DebugOverlay">
+                                <label class="selectLabel" for="abrDebugOverlay" data-t="Surcouche de diagnostic">Surcouche de diagnostic</label>
+                                <select is="emby-select" id="abrDebugOverlay" class="emby-select-withcolor emby-select">
+                                    <option value="Off" data-t="coupée">coupée</option>
+                                    <option value="Admins" data-t="administrateurs seulement">administrateurs seulement</option>
+                                    <option value="Everyone" data-t="tout le monde">tout le monde</option>
+                                </select>
+                                <div class="fieldDescription" data-t="Qui la voit pendant une lecture (elle se ferme avec ×). Prise en compte au rechargement de la page du lecteur. Par défaut : coupée.">Qui la voit pendant une lecture (elle se ferme avec ×). Prise en compte au rechargement de la page du lecteur. Par défaut : coupée.</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <button is="emby-button" type="submit" class="raised button-submit block"><span data-t="Enregistrer">Enregistrer</span></button>
                 </form>
             </div>
@@ -158,6 +174,7 @@
                     $('abrAboveCapKbps').value = c.AboveCapKbps;
                     $('abrPreferAdaptive').checked = !!c.PreferAdaptive;
                     $('abrExcludedClients').value = c.ExcludedClients || '';
+                    $('abrDebugOverlay').value = typeof c.DebugOverlay === 'string' ? c.DebugOverlay : ['Off', 'Admins', 'Everyone'][c.DebugOverlay || 0];
                     $('abrLanguage').value = typeof c.Language === 'string' ? c.Language : ['System', 'French', 'English', 'German', 'Spanish'][c.Language || 0];
                     refresh();
                 }
@@ -221,6 +238,7 @@
                         c.PreferAdaptive = $('abrPreferAdaptive').checked;
                         c.ExcludedClients = $('abrExcludedClients').value;
                         c.Language = $('abrLanguage').value;
+                        c.DebugOverlay = $('abrDebugOverlay').value;
                         return ApiClient.updatePluginConfiguration(pluginId, c);
                     }).then(function (r) { Dashboard.processPluginConfigurationUpdateResult(r); start(); });
                     return false;
