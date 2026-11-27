@@ -130,7 +130,13 @@ def setup():
     def first_movie():
         items = (http("GET", "/Items", query={"IncludeItemTypes": "Movie", "Recursive": "true", "userId": USER_ID}) or {}).get("Items") or []
         return items[0] if items else None   # bibliothèque encore vide pendant l'analyse : nouvel essai
-    item = wait("analyse de la bibliothèque", first_movie, timeout=300, every=5)
+    try:
+        item = wait("analyse de la bibliothèque", first_movie, timeout=120, every=5)
+    except RuntimeError:
+        # analyse lancée avec la création de la bibliothèque, parfois perdue au démarrage (12.4) : relancée
+        log("bibliothèque toujours vide après 2 minutes : nouvelle analyse")
+        http("POST", "/Library/Refresh")
+        item = wait("analyse de la bibliothèque", first_movie, timeout=600, every=5)
     plugins = http("GET", "/Plugins")
     check(any(p.get("Id", "").replace("-", "") == PLUGIN_ID.replace("-", "") and p.get("Status") == "Active" for p in plugins),
           "plugin chargé et actif : " + ", ".join(f"{p['Name']} {p['Version']} ({p.get('Status')})" for p in plugins))
