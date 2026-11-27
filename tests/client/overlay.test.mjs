@@ -53,12 +53,12 @@ await test('surcouche : qualité en cours, débit reçu, qualités proposées, t
     const p = d.querySelector('.abr-overlay');
     assert.ok(p, 'surcouche affichée');
     const text = p.textContent;
-    assert.match(text, /Qualité : 4,30 Mb\/s · 2 sur 5 · 1280x720/);
+    assert.match(text, /Qualité téléchargée : 4,30 Mb\/s · 2 sur 5 · 1280x720/);
     assert.match(text, /Débit reçu : 12,00 Mb\/s \(dernier segment\) · 8,00 Mb\/s \(5 derniers\)/);
     assert.match(text, /8,11 · 4,51 · 2,55 · 1,48 · 0,89 Mb\/s/);
     assert.match(text, /Changements \(1 descentes, 0 montées\)/);
     assert.match(text, /Tampon : 6,4 s d'avance/);
-    assert.match(text, /Image : 1280×720/);
+    assert.match(text, /Image affichée : 1280×720/);
     assert.match(text, /Images perdues : 3 \/ 2410/);
     assert.ok(calls.some((u) => u.includes('playSessionId=' + S)), 'la lecture demandée au serveur est celle du lecteur');
     assert.equal(p.querySelector('b'), null, 'rien n\'est inséré comme du HTML');
@@ -90,7 +90,7 @@ await test('en anglais : textes du serveur, point décimal', async () => {
     const { d } = page({ lang: 'en', texts: EN });
     await wait(1200);
     await wait(1100);
-    assert.match(d.querySelector('.abr-overlay').textContent, /Quality: 4\.30 Mb\/s · 2 of 5/);
+    assert.match(d.querySelector('.abr-overlay').textContent, /Quality downloaded: 4\.30 Mb\/s · 2 of 5/);
 });
 
 console.log(failures ? failures + ' test(s) en échec' : '\ntous les tests passent');

@@ -300,13 +300,19 @@ def switch(base, from_segs, to_segs, k, tolerance=0.15):
 # ------------------------------------------------------------------ lecture dans un vrai navigateur
 
 VIDEO_JS = """() => { const v = document.querySelector('video'); if (!v) return null;
-  return { t: v.currentTime, paused: v.paused, ready: v.readyState, ended: v.ended,
+  return { t: v.currentTime, err: v.error ? v.error.code : 0, paused: v.paused, ready: v.readyState, ended: v.ended,
            buf: v.buffered.length ? v.buffered.end(v.buffered.length - 1) - v.currentTime : 0,
            audio: v.webkitAudioDecodedByteCount || 0, frames: v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().totalVideoFrames : 0 }; }"""
 
 
-def browser_run(item, label: str):
-    """Lecture de 130 s : réseau libre 30 s, bridé à 1,6 Mb/s 60 s, libre 40 s. Coupures, qualités, redémarrages."""
+# profils de réseau : (début, fin, kb/s) ; hors des plages, réseau libre
+DROP = [(30, 90, 1600)]                                   # une baisse d'une minute
+YOYO = [(25, 45, 1600), (60, 80, 1600)]                   # un réseau qui fait le yoyo
+
+
+def browser_run(item, label: str, profile=None, length=130):
+    """Lecture de `length` s sous un profil de réseau (par défaut une baisse à 1,6 Mb/s de 30 à 90 s). Coupures, qualités, redémarrages."""
+    profile = profile or DROP
     from playwright.sync_api import sync_playwright
     info = http("GET", "/System/Info/Public")
     creds = {"Servers": [{"Id": info["Id"], "ManualAddress": BASE, "LocalAddress": BASE, "UserId": USER_ID, "AccessToken": TOKEN,
@@ -337,11 +343,11 @@ def browser_run(item, label: str):
         cdp.send("Network.enable")
         start = time.time()
         measuring[0] = True
-        samples, phase_of = [], lambda s: "libre" if s < 30 else ("bridé" if s < 90 else "libre")
+        samples, phase_of = [], lambda s: "bridé" if any(a <= s < b for a, b, _ in profile) else "libre"
         last_t, waiting_since = None, None
-        while time.time() - start < 130:
+        while time.time() - start < length:
             s = time.time() - start
-            kbps = 1600 if 30 <= s < 90 else -1
+            kbps = next((k for a, b, k in profile if a <= s < b), -1)
             cdp.send("Network.emulateNetworkConditions", {"offline": False, "latency": 20, "downloadThroughput": kbps * 1000 / 8 if kbps > 0 else -1,
                                                           "uploadThroughput": -1})
             v = page.evaluate(VIDEO_JS)
@@ -364,6 +370,7 @@ def browser_run(item, label: str):
         res["stall_s"] = round(res["stall_s"], 1)
         res["position"] = samples[-1]["t"] if samples else 0
         res["audio_growing"] = len(samples) > 10 and samples[-1]["audio"] > samples[len(samples) // 2]["audio"] > samples[0]["audio"]
+        res["video_errors"] = sorted(set(x["err"] for x in samples if x.get("err")))
         res["overlay"] = page.evaluate("() => { const p = document.querySelector('.abr-overlay'); return p && p.style.display !== 'none' ? p.textContent : null; }")
         page.screenshot(path=str(OUT / f"lecture-{label}.png"))
         b.close()
@@ -378,8 +385,25 @@ def browser_checks(item):
     configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=0, DebugOverlay="Off")
     off = browser_run(item, "sans-echelle")
     configure(MaxRungs=4)
+    # réseau qui fait le yoyo : échelle seule (le lecteur décide), puis pilotage par le serveur
+    configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4, ServerControl=False, DebugOverlay="Off")
+    yoyo_player = browser_run(item, "yoyo-lecteur", YOYO, 110)
+    yoyo_player["server"] = last_session()
+    configure(ServerControl=True, HoldAfterDownSeconds=30, MinChangeSeconds=10, AnticipateDown=True, DebugOverlay="Admins")
+    yoyo_server = browser_run(item, "yoyo-serveur", YOYO, 110)
+    yoyo_server["server"] = last_session()
+    configure(ServerControl=False)
+    report["yoyo"] = {"player": {k: v for k, v in yoyo_player.items() if k != "samples"}, "server": {k: v for k, v in yoyo_server.items() if k != "samples"}}
     report["browser"] = {"with": {k: v for k, v in on.items() if k != "samples"}, "without": {k: v for k, v in off.items() if k != "samples"}}
-    (OUT / "browser.json").write_text(json.dumps({"with": on, "without": off}, indent=1), encoding="utf-8")
+    (OUT / "browser.json").write_text(json.dumps({"with": on, "without": off, "yoyo_player": yoyo_player, "yoyo_server": yoyo_server}, indent=1), encoding="utf-8")
+    sp, ss = yoyo_player.get("server") or {}, yoyo_server.get("server") or {}
+    changes = lambda x: len(x.get("steps") or [])
+    check(not yoyo_server["video_errors"] and not [e for e in yoyo_server["errors"] if "recul" in e],
+          f"pilotage par le serveur : aucune erreur de lecture ({yoyo_server['video_errors']}, {yoyo_server['errors'][:2]})")
+    check(yoyo_server["playbackinfo"] == 0, "pilotage par le serveur : aucun redémarrage de la lecture")
+    check(changes(ss) <= changes(sp), f"pilotage par le serveur : changements de qualité {changes(ss)} contre {changes(sp)} sans")
+    check(yoyo_server["stall_s"] <= yoyo_player["stall_s"] + 2,
+          f"pilotage par le serveur : coupures {yoyo_server['stall_s']} s contre {yoyo_player['stall_s']} s sans (réseau en yoyo)")
     # première qualité demandée = celle de départ ; une demande ensuite d'une autre playlist = un changement de qualité
     start = on["variants"][0][1] if on["variants"] else None
     changed = [x for x in on["variants"][1:] if x[1] != start]
@@ -391,6 +415,13 @@ def browser_checks(item):
     check(off.get("overlay") is None or "Mb/s" in off.get("overlay"), "surcouche : rien d'anormal sans échelle")
     check(on["stall_s"] <= max(3.0, off["stall_s"] * 0.5),
           f"navigateur : coupures {on['stall_s']} s avec l'échelle contre {off['stall_s']} s sans (même réseau)")
+
+
+def last_session() -> dict:
+    """Dernière lecture vue par le serveur : qualités servies et mesure."""
+    st = http("GET", "/AdaptiveBitrate/Status", query={"lang": "fr"})
+    s = (st.get("sessions") or [{}])[0]
+    return {"steps": [x.get("kbps") for x in s.get("steps") or []], "down": s.get("down"), "up": s.get("up"), "measure": s.get("server")}
 
 
 def write_report():
@@ -409,6 +440,13 @@ def write_report():
         for k, name in (("stall_s", "Coupures (s)"), ("stalls", "Nombre de coupures"), ("playbackinfo", "Demandes de lecture"), ("position", "Position atteinte (s)")):
             L.append(f"| {name} | {br['with'].get(k)} | {br['without'].get(k)} |")
         L.append(f"| Qualités demandées (s, débit) | {br['with'].get('variants')} | {br['without'].get('variants')} |")
+    yo = report.get("yoyo")
+    if yo:
+        L += ["", "| Réseau en yoyo (1,6 Mb/s de 25 à 45 s et de 60 à 80 s) | Le lecteur décide | Le serveur pilote |", "|---|---|---|"]
+        for k, name in (("stall_s", "Coupures (s)"), ("stalls", "Nombre de coupures"), ("playbackinfo", "Demandes de lecture"), ("position", "Position atteinte (s)"), ("video_errors", "Erreurs vidéo")):
+            L.append(f"| {name} | {yo['player'].get(k)} | {yo['server'].get(k)} |")
+        for k, name in (("steps", "Qualités servies (kb/s)"), ("measure", "Mesure du serveur")):
+            L.append(f"| {name} | {(yo['player'].get('server') or {}).get(k)} | {(yo['server'].get('server') or {}).get(k)} |")
     L += ["", "### " + ("Aucun problème détecté" if not problems else f"{len(problems)} problème(s)")] + [f"- {p}" for p in problems]
     (OUT / "report.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     print("\n".join(L))

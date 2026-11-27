@@ -14,6 +14,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
         services.AddSingleton<SwitchLog>();
+        services.AddSingleton<Sessions>();
         services.AddSingleton<HlsFilter>();
         services.AddSingleton<PlaybackInfoFilter>();
         services.AddSingleton<IStartupFilter, ScriptInjection>();

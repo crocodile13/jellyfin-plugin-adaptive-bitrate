@@ -31,7 +31,7 @@ namespace Jellyfin.Plugin.AdaptiveBitrate;
 /// d'un segment, sans relancer la lecture. Jellyfin arrête lui-même l'encodage de l'ancienne marche quand la nouvelle
 /// démarre (même session de lecture). Toute forme inattendue : la playlist de Jellyfin part telle quelle.
 /// </summary>
-public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
+public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrderedFilter
 {
     /// <summary>Contrôleur des flux HLS de Jellyfin.</summary>
     public const string Controller = "DynamicHls";
@@ -39,8 +39,10 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
     /// <summary>Playlist maîtresse d'une vidéo.</summary>
     public const string MasterAction = "GetMasterHlsVideoPlaylist";
 
-    /// <summary>Playlist d'une qualité (demandée par le lecteur quand il passe à cette qualité).</summary>
-    public const string VariantAction = "GetVariantHlsVideoPlaylist";
+    /// <summary>Segment d'une qualité.</summary>
+    public const string SegmentAction = "GetHlsVideoSegment";
+
+    private const string ItemKey = "AdaptiveBitrate.Session";
 
     /// <summary>Paramètres de l'action dont dépend le plugin (vérifiés avant tout appel).</summary>
     public static readonly string[] Required = { "itemId", "mediaSourceId", "videoBitRate", "maxHeight", "maxWidth", "width", "height", "allowVideoStreamCopy", "enableAutoStreamCopy", "enableAdaptiveBitrateStreaming", "liveStreamId", "playSessionId" };
@@ -50,16 +52,18 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
     private readonly IUserManager _users;
     private readonly INetworkManager _network;
     private readonly SwitchLog _log;
+    private readonly Sessions _sessions;
     private readonly ILogger<HlsFilter> _logger;
     private bool _warned;
 
-    public HlsFilter(ILibraryManager library, IMediaSourceManager sources, IUserManager users, INetworkManager network, SwitchLog log, ILogger<HlsFilter> logger)
+    public HlsFilter(ILibraryManager library, IMediaSourceManager sources, IUserManager users, INetworkManager network, SwitchLog log, Sessions sessions, ILogger<HlsFilter> logger)
     {
         _library = library;
         _sources = sources;
         _users = users;
         _network = network;
         _log = log;
+        _sessions = sessions;
         _logger = logger;
     }
 
@@ -81,9 +85,9 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
             return;
         }
 
-        if (d.ActionName == VariantAction)
+        if (d.ActionName == SegmentAction)
         {
-            Track(context);
+            Segment(context);
             await next().ConfigureAwait(false);
             return;
         }
@@ -139,19 +143,44 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
             var text = Encoding.UTF8.GetString(original.FileContents);
             var rungs = Ladder.Rungs(Arg<int?>(context, "videoBitRate"), Source(context), cfg.LadderOptions());
             var added = new List<Variant>();
+            // paramètres de chaque qualité, la qualité de Jellyfin comprise (pour servir une qualité à la place d'une autre)
+            var top = MasterPlaylist.Variants(text).FirstOrDefault();
+            var known = new List<RungParams>();
+            if (top is not null)
+            {
+                var p0 = new RungParams { Bandwidth = top.Bandwidth };
+                foreach (var k in RungParams.Keys)
+                {
+                    p0.Values[k] = context.ActionArguments.TryGetValue(k, out var v) ? v : null;
+                }
+
+                known.Add(p0);
+            }
+
             foreach (var rung in rungs)
             {
-                var playlist = await RungPlaylist(context, d.MethodInfo, rung).ConfigureAwait(false);
-                if (playlist is not null)
+                var values = Overrides(rung);
+                var playlist = await RungPlaylist(context, d.MethodInfo, values).ConfigureAwait(false);
+                var found = playlist is null ? new List<Variant>() : MasterPlaylist.Variants(playlist);
+                added.AddRange(found);
+                if (found.Count > 0)
                 {
-                    added.AddRange(MasterPlaylist.Variants(playlist));
+                    var p = new RungParams { Bandwidth = found[0].Bandwidth };
+                    foreach (var k in RungParams.Keys)
+                    {
+                        p.Values[k] = values.GetValueOrDefault(k);
+                    }
+
+                    known.Add(p);
                 }
             }
 
             var merged = MasterPlaylist.Merge(text, added);
             executed.Result = new FileContentResult(Encoding.UTF8.GetBytes(merged), original.ContentType);
             var offers = MasterPlaylist.Variants(merged).Select(v => new Offer((int)(v.Bandwidth / 1000), MasterPlaylist.Attribute(v.Info, "RESOLUTION") ?? string.Empty)).ToList();
-            _log.Started(Arg<string>(context, "playSessionId") ?? string.Empty, TitleOf(context), ClientOf(context), offers);
+            var session = Arg<string>(context, "playSessionId") ?? string.Empty;
+            _log.Started(session, TitleOf(context), ClientOf(context), offers);
+            _sessions.Start(session, known.OrderByDescending(x => x.Bandwidth).ToList());
         }
         catch (Exception ex)
         {
@@ -164,36 +193,42 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
     /// Playlist maîtresse d'une marche, produite par l'action de Jellyfin. Jellyfin construit l'adresse de la qualité à
     /// partir de la requête HTTP (pas des paramètres de l'action) : la requête est remplacée le temps de l'appel.
     /// </summary>
-    private static async Task<string?> RungPlaylist(ActionExecutingContext context, MethodInfo method, Rung rung)
+    /// <summary>Paramètres d'une marche : débit, taille, vidéo jamais copiée.</summary>
+    private static Dictionary<string, object?> Overrides(Rung rung) => new(StringComparer.OrdinalIgnoreCase)
     {
-        var request = context.HttpContext.Request;
-        var saved = request.QueryString;
-        var query = QueryHelpers.ParseQuery(saved.Value);
-        var overrides = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        {
-            // largeur aussi : sinon Jellyfin garde la largeur de la source et sa propre table de résolutions peut rendre une
-            // marche plus basse en 1080p (mesuré : 1920x1080 à 3 Mb/s, moins net qu'un 720p)
-            ["videoBitRate"] = rung.VideoBitrate, ["maxHeight"] = rung.MaxHeight, ["maxWidth"] = rung.MaxWidth > 0 ? rung.MaxWidth : null, ["width"] = null, ["height"] = null,
-            ["allowVideoStreamCopy"] = false, ["enableAutoStreamCopy"] = false, ["enableAdaptiveBitrateStreaming"] = false,
-        };
-        var q = new Dictionary<string, StringValues>(query, StringComparer.OrdinalIgnoreCase);
-        foreach (var (k, v) in overrides)
+        // largeur aussi : sinon Jellyfin garde la largeur de la source et sa propre table de résolutions peut rendre une
+        // marche plus basse en 1080p (mesuré : 1920x1080 à 3 Mb/s, moins net qu'un 720p)
+        ["videoBitRate"] = rung.VideoBitrate, ["maxHeight"] = rung.MaxHeight, ["maxWidth"] = rung.MaxWidth > 0 ? rung.MaxWidth : null, ["width"] = null, ["height"] = null,
+        ["allowVideoStreamCopy"] = false, ["enableAutoStreamCopy"] = false, ["enableAdaptiveBitrateStreaming"] = false,
+    };
+
+    /// <summary>Requête dont les paramètres donnés sont remplacés (même écriture que les adresses de Jellyfin).</summary>
+    private static QueryString WithValues(QueryString original, IReadOnlyDictionary<string, object?> values)
+    {
+        var q = new Dictionary<string, StringValues>(QueryHelpers.ParseQuery(original.Value), StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, v) in values)
         {
             q.Remove(k);
             if (v is not null)
             {
-                // même écriture que les adresses de Jellyfin : VideoBitrate=…, AllowVideoStreamCopy=false
                 q[char.ToUpperInvariant(k[0]) + k[1..]] = v is bool b ? (b ? "true" : "false") : Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
             }
         }
 
+        return QueryString.Create(q.SelectMany(kv => kv.Value.Select(v => new KeyValuePair<string, string?>(kv.Key, v))));
+    }
+
+    private static async Task<string?> RungPlaylist(ActionExecutingContext context, MethodInfo method, Dictionary<string, object?> overrides)
+    {
+        var request = context.HttpContext.Request;
+        var saved = request.QueryString;
         var args = method.GetParameters().Select(p =>
             overrides.TryGetValue(p.Name!, out var o) ? o
             : context.ActionArguments.TryGetValue(p.Name!, out var a) ? a
             : p.HasDefaultValue ? p.DefaultValue : null).ToArray();
         try
         {
-            request.QueryString = QueryString.Create(q.SelectMany(kv => kv.Value.Select(v => new KeyValuePair<string, string?>(kv.Key, v))));
+            request.QueryString = WithValues(saved, overrides);
             if (method.Invoke(context.Controller, args) is not Task task)
             {
                 return null;
@@ -209,19 +244,76 @@ public sealed class HlsFilter : IAsyncActionFilter, IOrderedFilter
         }
     }
 
-    /// <summary>Le lecteur passe à une qualité : noté pour la page de configuration (débit vidéo de la marche, 0 = copie).</summary>
-    private void Track(ActionExecutingContext context)
+    /// <summary>
+    /// Segment demandé : la qualité à servir (celle du lecteur, sauf décision du serveur : remontée retenue, descente
+    /// anticipée), notée pour la page et la surcouche. Toutes les qualités ont les mêmes segments aux mêmes instants
+    /// (vérifié par le test d'intégration) et Jellyfin ne lit que les paramètres de qualité pour trouver le fichier :
+    /// changer ces paramètres suffit. Lecture inconnue ou forme inattendue : la demande du lecteur passe telle quelle.
+    /// </summary>
+    private void Segment(ActionExecutingContext context)
     {
         try
         {
-            var copy = Arg<bool?>(context, "allowVideoStreamCopy") != false && Arg<int?>(context, "videoBitRate") is null;
-            _log.Requested(Arg<string>(context, "playSessionId") ?? string.Empty, copy ? 0 : Arg<int?>(context, "videoBitRate") ?? 0, DateTime.UtcNow);
+            var session = _sessions.Get(Arg<string>(context, "playSessionId"));
+            if (session is null || Plugin.Instance?.Configuration is not { Enabled: true } cfg)
+            {
+                return;
+            }
+
+            int requested = session.IndexOf(context.ActionArguments);
+            if (requested < 0)
+            {
+                return;
+            }
+
+            double seconds = Arg<long>(context, "actualSegmentLengthTicks") / 1e7;
+            Decision decision;
+            lock (session)
+            {
+                decision = session.Governor.Decide(requested, Arg<int>(context, "segmentId"), seconds > 0 ? seconds : 3, Now(), cfg.GovernorOptions());
+            }
+
+            var served = session.Rungs[decision.Rung];
+            if (decision.Rung != requested)
+            {
+                foreach (var (k, v) in served.Values)
+                {
+                    context.ActionArguments[k] = v;
+                }
+
+                context.HttpContext.Request.QueryString = WithValues(context.HttpContext.Request.QueryString, served.Values);
+            }
+
+            context.HttpContext.Items[ItemKey] = session;
+            var kbps = served.Values.GetValueOrDefault("allowVideoStreamCopy") is false ? (int)(served.Bandwidth / 1000) : 0;
+            _log.Requested(Arg<string>(context, "playSessionId") ?? string.Empty, kbps * 1000, DateTime.UtcNow);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Adaptive Bitrate: variant request not tracked");
+            _logger.LogDebug(ex, "Adaptive Bitrate: segment request left as is");
         }
     }
+
+    /// <inheritdoc />
+    public async Task OnResultExecutionAsync(ResultExecutingContext context, ResultExecutionDelegate next)
+    {
+        if (context.HttpContext.Items[ItemKey] is not Session session)
+        {
+            await next().ConfigureAwait(false);
+            return;
+        }
+
+        // mesure : temps d'envoi du segment au lecteur (au-delà des tampons du système, la vitesse de sa connexion)
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await next().ConfigureAwait(false);
+        long bytes = context.HttpContext.Response.ContentLength ?? (context.Result is PhysicalFileResult f && System.IO.File.Exists(f.FileName) ? new System.IO.FileInfo(f.FileName).Length : 0);
+        lock (session)
+        {
+            session.Governor.Sent(bytes, clock.Elapsed.TotalSeconds);
+        }
+    }
+
+    private static double Now() => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 
     private PlaybackRequest Describe(ActionExecutingContext context)
     {

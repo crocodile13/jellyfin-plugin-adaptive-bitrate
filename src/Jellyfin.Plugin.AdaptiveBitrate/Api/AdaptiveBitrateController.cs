@@ -17,12 +17,33 @@ namespace Jellyfin.Plugin.AdaptiveBitrate.Api;
 public sealed class AdaptiveBitrateController : ControllerBase
 {
     private readonly SwitchLog _log;
+    private readonly Sessions _sessions;
     private readonly IUserManager _users;
 
-    public AdaptiveBitrateController(SwitchLog log, IUserManager users)
+    public AdaptiveBitrateController(SwitchLog log, Sessions sessions, IUserManager users)
     {
         _log = log;
+        _sessions = sessions;
         _users = users;
+    }
+
+    /// <summary>Mesure du serveur pour une lecture (débit d'envoi, avance du lecteur, décisions), ou null.</summary>
+    private object? Measure(string session)
+    {
+        if (_sessions.Get(session) is not { } s)
+        {
+            return null;
+        }
+
+        lock (s)
+        {
+            var g = s.Governor;
+            return new
+            {
+                rateKbps = g.Rate is double r ? (int)(r / 1000) : (int?)null, lead = g.Lead is double l ? Math.Round(l, 1) : (double?)null,
+                served = g.Current, held = g.Held, anticipated = g.Anticipated, samples = g.Samples,
+            };
+        }
     }
 
     /// <summary>Script de la surcouche de diagnostic. Public, comme tout fichier de l'interface web ; ne montre rien sans réglage.</summary>
@@ -67,6 +88,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             {
                 title = s.Title, offers = s.Offers.Select(o => new { kbps = o.Kbps, resolution = o.Resolution }),
                 steps = s.Steps.Select(p => new { at = p.At, kbps = p.VideoBitrate / 1000 }), down = s.Down, up = s.Up,
+                server = Measure(s.Session),
             },
         });
     }
@@ -88,6 +110,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             {
                 title = x.Title, client = x.Client, offered = x.Offered, down = x.Down, up = x.Up,
                 offers = x.Offers.Select(o => new { kbps = o.Kbps, resolution = o.Resolution }),
+                server = Measure(x.Session),
                 steps = x.Steps.Select(p => new { at = p.At, kbps = p.VideoBitrate / 1000 }),
             }),
         });

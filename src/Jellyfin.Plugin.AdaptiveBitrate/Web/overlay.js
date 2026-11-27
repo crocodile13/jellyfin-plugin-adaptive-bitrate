@@ -122,7 +122,7 @@
             var idx = -1;
             offers.forEach(function (o, i) { if (idx < 0 && s.kbps > 0 && Math.abs(o.kbps - s.kbps) / o.kbps < 0.25) { idx = i; } });
             if (s.copy && idx < 0 && offers.length) { idx = 0; }
-            line(body, tr('Qualité'), curLabel + (idx >= 0 ? ' · ' + trf('{0} sur {1}', idx + 1, offers.length) + (offers[idx].resolution ? ' · ' + offers[idx].resolution : '') : ''));
+            line(body, tr('Qualité téléchargée'), curLabel + (idx >= 0 ? ' · ' + trf('{0} sur {1}', idx + 1, offers.length) + (offers[idx].resolution ? ' · ' + offers[idx].resolution : '') : ''));
             line(body, tr('Débit reçu'), s.lastRate === null ? '—' : trf('{0} Mb/s (dernier segment) · {1} Mb/s (5 derniers)', num(s.lastRate, 2), num(s.avgRate, 2)));
             if (offers.length) { line(body, tr('Qualités proposées'), offers.map(function (o) { return num(o.kbps / 1000, 2); }).join(' · ') + ' Mb/s'); }
             if (info && info.steps && info.steps.length) {
@@ -133,10 +133,16 @@
                 line(body, trf('Changements ({0} descentes, {1} montées)', info.down, info.up), steps.join(' ; '));
             }
         }
+        if (info && info.server) {
+            var m = info.server;
+            line(body, tr('Mesure du serveur'), (m.rateKbps === null ? '—' : trf('{0} Mb/s envoyés', num(m.rateKbps / 1000, 2)))
+                + (m.lead === null ? '' : ' · ' + trf('avance du lecteur {0} s', num(m.lead, 1))));
+            if (m.held || m.anticipated) { line(body, tr('Décisions du serveur'), trf('{0} remontées retenues, {1} descentes anticipées', m.held, m.anticipated)); }
+        }
         var ahead = 0;
         for (var i = 0; i < v.buffered.length; i++) { if (v.buffered.start(i) <= v.currentTime + 0.1 && v.buffered.end(i) > v.currentTime) { ahead = v.buffered.end(i) - v.currentTime; } }
         line(body, tr('Tampon'), trf('{0} s d\'avance', num(ahead, 1)));
-        line(body, tr('Image'), v.videoWidth + '×' + v.videoHeight);
+        line(body, tr('Image affichée'), v.videoWidth + '×' + v.videoHeight);
         var q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
         if (q) { line(body, tr('Images perdues'), q.droppedVideoFrames + ' / ' + q.totalVideoFrames); }
         fetchInfo(s.session);
