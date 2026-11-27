@@ -31,23 +31,26 @@ jobs:
         run: |
           META=$(jq -r .version meta.json)
           CSPROJ=$(grep -oP '<Version>\K[^<]+' src/Jellyfin.Plugin.AdaptiveBitrate/Jellyfin.Plugin.AdaptiveBitrate.csproj)
-          echo "meta=$META csproj=$CSPROJ"
+          TOP=$(jq -r '.[0].versions[0].version // empty' manifest.json)
+          echo "meta=$META csproj=$CSPROJ manifest(top)=$TOP"
           test "$META" = "$CSPROJ"
+          # 1.MINOR.PATCH.0 and a changelog starting with "1.MINOR.PATCH" (meta.json: the release workflow copies it into
+          # the catalogue). The catalogue only lists published versions: the release workflow adds the new entry once the
+          # zip exists (an entry without URL breaks installs: 1.0.36 was one; a release PR listing the version made it
+          # appear a few minutes before it could be installed). So the top entry is the version in progress (already
+          # published) or the previous one (release pending), never a newer one.
           echo "$META" | grep -qE '^1\.[0-9]+\.[0-9]+\.0$'
-          # catalogue : vide avant la première version ; sinon la première entrée est la version en cours, son changelog
-          # commence par « 1.MINEUR.CORRECTIF », versions strictement décroissantes, toute entrée sous la première publiée
-          if [ "$(jq '.[0].versions | length' manifest.json)" != 0 ]; then
-            test "$(jq -r '.[0].versions[0].version' manifest.json)" = "$META"
-            jq -e --arg p "${META%.0}" '.[0].versions[0].changelog | startswith($p)' manifest.json > /dev/null
-            python3 - <<'PY'
-          import json
+          jq -e --arg p "${META%.0}" '.changelog | startswith($p)' meta.json > /dev/null
+          python3 - "$META" <<'PY'
+          import json, sys
+          meta = sys.argv[1]
           v = json.load(open("manifest.json"))[0]["versions"]
-          key = lambda e: tuple(int(x) for x in e["version"].split("."))
-          assert all(key(a) > key(b) for a, b in zip(v, v[1:])), "versions not strictly decreasing"
-          bad = [e["version"] for e in v[1:] if not (e["sourceUrl"] and e["checksum"] and e["timestamp"])]
-          assert not bad, f"unpublished entries below the top one: {bad}"
+          key = lambda x: tuple(int(p) for p in x.split("."))
+          assert all(key(a["version"]) > key(b["version"]) for a, b in zip(v, v[1:])), "versions not strictly decreasing"
+          bad = [e["version"] for e in v if not (e["sourceUrl"] and e["checksum"] and e["timestamp"])]
+          assert not bad, f"unpublished entries in the catalogue: {bad}"
+          assert not v or key(v[0]["version"]) <= key(meta), f"catalogue lists {v[0]['version']}, newer than meta.json {meta}"
           PY
-          fi
 
       - name: Jellyfin compatibility window (compat.json, every place that repeats it)
         run: python tools/compat.py check
