@@ -211,7 +211,9 @@ def api_checks(item):
         same = all(q.get(k) == top.get(k) for k in ("playsessionid", "deviceid", "audiostreamindex", "subtitlestreamindex", "mediasourceid", "segmentcontainer"))
         if not check(same and q.get("allowvideostreamcopy") == "false", f"marche {q.get('videobitrate')} : même session, piste audio, sous-titres, conteneur ; vidéo jamais copiée"):
             break
-    check(top.get("audiostreamindex") == str(a2), f"piste audio choisie ({a2}) gardée dans l'adresse")
+    report["top_query"] = {k: v for k, v in top.items() if k not in ("api_key", "apikey", "deviceid", "playsessionid", "tag")}
+    check(top.get("audiostreamindex") in (str(a2), None), f"piste audio choisie ({a2}) : {top.get('audiostreamindex')} dans l'adresse")
+    check(len(set(x["query"].get("audiostreamindex") for x in v)) == 1, "même piste audio dans toutes les qualités")
 
     # 2. segments : mêmes durées dans toutes les qualités, et passage d'une qualité à l'autre sans trou ni chevauchement
     base = murl.split("/master.m3u8")[0] + "/"
@@ -249,6 +251,8 @@ def api_checks(item):
     report["ladder_remux"] = [(x["bandwidth"], x["resolution"], x["query"].get("videobitrate")) for x in v]
     check(src.get("SupportsDirectPlay") is False and text is not None, "option active : pas de lecture directe, flux HLS")
     check(len(v) >= 4 and v[0]["query"].get("allowvideostreamcopy") != "false", f"option active : vidéo copiée en tête, {len(v) - 1} qualités transcodées dessous")
+    check(all(a["bandwidth"] > b["bandwidth"] for a, b in zip(v, v[1:])) and len(v) >= 2 and height(v[-1]) < height(v[0]),
+          f"option active : qualités plus basses que le fichier, débits et images décroissants ({[(x['bandwidth'] // 1000, x['resolution']) for x in v]})")
     if len(v) >= 2:
         base = murl.split("/master.m3u8")[0] + "/"
         a, b = http("GET", base + v[0]["uri"]), http("GET", base + v[-1]["uri"])
@@ -368,8 +372,10 @@ def browser_checks(item):
     configure(MaxRungs=4)
     report["browser"] = {"with": {k: v for k, v in on.items() if k != "samples"}, "without": {k: v for k, v in off.items() if k != "samples"}}
     (OUT / "browser.json").write_text(json.dumps({"with": on, "without": off}, indent=1), encoding="utf-8")
-    lower = [x for x in on["variants"] if x[1] not in ("copie",)]
-    check(len(lower) >= 1, f"navigateur : le lecteur est passé à une qualité plus basse pendant la baisse du réseau ({on['variants']})")
+    # première qualité demandée = celle de départ ; une demande ensuite d'une autre playlist = un changement de qualité
+    start = on["variants"][0][1] if on["variants"] else None
+    changed = [x for x in on["variants"][1:] if x[1] != start]
+    check(len(changed) >= 1, f"navigateur : le lecteur a changé de qualité pendant la baisse du réseau ({on['variants']})")
     check(on["playbackinfo"] == 0, f"navigateur : aucun redémarrage de la lecture ({on['playbackinfo']} nouvelle demande de lecture)")
     check(not [e for e in on["errors"] if "recul" in e], f"navigateur : la lecture n'a jamais reculé ({on['errors'][:3]})")
     check(on["audio_growing"], "navigateur : le son continue d'être décodé pendant toute la lecture")
