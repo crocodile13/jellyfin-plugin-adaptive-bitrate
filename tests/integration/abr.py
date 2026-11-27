@@ -21,9 +21,9 @@ import urllib.request
 from pathlib import Path
 
 BASE = os.environ.get("ABR_URL", "http://127.0.0.1:8096")
-# relais Toxiproxy (débit limité au niveau de la connexion, comme un vrai réseau : le serveur le voit en envoyant)
-PROXY = os.environ.get("ABR_PROXY", "http://127.0.0.1:8097")
-TOXI = os.environ.get("ABR_TOXI", "http://127.0.0.1:8474")
+# débit limité sur l'interface réseau du conteneur de Jellyfin (tc, comme un vrai lien lent : le serveur est retenu en
+# envoyant). Un relais applicatif (Toxiproxy) ou le bridage de Chrome laissent le serveur tout envoyer d'un coup dans les
+# tampons du système : il ne voyait rien (mesuré : 1 Gb/s pendant la baisse)
 OUT = Path(os.environ.get("ABR_OUT", "abr-out"))
 PROBE = Path(os.environ.get("ABR_PROBE", "probe"))      # monté dans le conteneur en /probe (ffprobe de Jellyfin)
 JF = os.environ.get("ABR_CONTAINER", "jf")
@@ -313,21 +313,21 @@ DROP = [(30, 90, 1600)]                                   # une baisse d'une min
 YOYO = [(25, 45, 1600), (60, 80, 1600)]                   # un réseau qui fait le yoyo
 
 
-def toxi(kbps):
-    """Débit du relais : kb/s (limite au niveau de la connexion), ou -1 pour le réseau libre."""
-    try:
-        http("DELETE", TOXI + "/proxies/jf/toxics/bw")
-    except HttpError:
-        pass
+def link(kbps):
+    """Débit sortant du conteneur de Jellyfin : kb/s, ou -1 pour le réseau libre (tc dans son espace réseau)."""
+    pid = subprocess.run(["docker", "inspect", "-f", "{{.State.Pid}}", JF], capture_output=True, text=True).stdout.strip()
+    tc = ["sudo", "nsenter", "-t", pid, "-n", "tc", "qdisc"]
+    subprocess.run(tc + ["del", "dev", "eth0", "root"], capture_output=True)
     if kbps > 0:
-        http("POST", TOXI + "/proxies/jf/toxics", {"name": "bw", "type": "bandwidth", "stream": "downstream", "attributes": {"rate": max(1, kbps // 8)}})
+        subprocess.run(tc + ["add", "dev", "eth0", "root", "tbf", "rate", f"{kbps}kbit", "burst", "32kbit", "latency", "300ms"], check=True)
 
 
-def browser_run(item, label: str, profile=None, length=130, proxy=False):
+def browser_run(item, label: str, profile=None, length=130, shaped=False):
     """Lecture de `length` s sous un profil de réseau (par défaut une baisse à 1,6 Mb/s de 30 à 90 s). Coupures, qualités,
-    redémarrages. proxy : le débit est limité par le relais (connexion), sinon par Chrome (après réception)."""
+    redémarrages. shaped : le débit est limité sur l'interface de Jellyfin (tc), sinon par Chrome (après réception) ;
+    avec tc, la mesure du serveur est relevée toutes les 2 s."""
     profile = profile or DROP
-    base = PROXY if proxy else BASE
+    base = BASE
     from playwright.sync_api import sync_playwright
     info = http("GET", "/System/Info/Public")
     creds = {"Servers": [{"Id": info["Id"], "ManualAddress": base, "LocalAddress": base, "UserId": USER_ID, "AccessToken": TOKEN,
@@ -363,10 +363,13 @@ def browser_run(item, label: str, profile=None, length=130, proxy=False):
         while time.time() - start < length:
             s = time.time() - start
             kbps = next((k for a, b, k in profile if a <= s < b), -1)
-            if proxy:
+            if shaped:
                 if kbps != applied:
-                    toxi(kbps)
+                    link(kbps)
                     applied = kbps
+                if int(s) % 2 == 0:
+                    m = (last_session().get("measure") or {})
+                    res.setdefault("server_trace", []).append((round(s), m.get("rateKbps"), m.get("lead"), m.get("served")))
             else:
                 cdp.send("Network.emulateNetworkConditions", {"offline": False, "latency": 20, "downloadThroughput": kbps * 1000 / 8 if kbps > 0 else -1,
                                                               "uploadThroughput": -1})
@@ -394,8 +397,8 @@ def browser_run(item, label: str, profile=None, length=130, proxy=False):
         res["overlay"] = page.evaluate("() => { const p = document.querySelector('.abr-overlay'); return p && p.style.display !== 'none' ? p.textContent : null; }")
         page.screenshot(path=str(OUT / f"lecture-{label}.png"))
         b.close()
-    if proxy:
-        toxi(-1)
+    if shaped:
+        link(-1)
     res["samples"] = samples
     return res
 
@@ -409,10 +412,10 @@ def browser_checks(item):
     configure(MaxRungs=4)
     # réseau qui fait le yoyo : échelle seule (le lecteur décide), puis pilotage par le serveur
     configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4, ServerControl=False, DebugOverlay="Off")
-    yoyo_player = browser_run(item, "yoyo-lecteur", YOYO, 110, proxy=True)
+    yoyo_player = browser_run(item, "yoyo-lecteur", YOYO, 110, shaped=True)
     yoyo_player["server"] = last_session()
     configure(ServerControl=True, HoldAfterDownSeconds=30, MinChangeSeconds=10, AnticipateDown=True, DebugOverlay="Admins")
-    yoyo_server = browser_run(item, "yoyo-serveur", YOYO, 110, proxy=True)
+    yoyo_server = browser_run(item, "yoyo-serveur", YOYO, 110, shaped=True)
     yoyo_server["server"] = last_session()
     configure(ServerControl=False)
     report["yoyo"] = {"player": {k: v for k, v in yoyo_player.items() if k != "samples"}, "server": {k: v for k, v in yoyo_server.items() if k != "samples"}}
@@ -464,11 +467,15 @@ def write_report():
         L.append(f"| Qualités demandées (s, débit) | {br['with'].get('variants')} | {br['without'].get('variants')} |")
     yo = report.get("yoyo")
     if yo:
-        L += ["", "| Réseau en yoyo (1,6 Mb/s de 25 à 45 s et de 60 à 80 s, limité au niveau de la connexion) | Le lecteur décide | Le serveur pilote |", "|---|---|---|"]
+        L += ["", "| Réseau en yoyo (1,6 Mb/s de 25 à 45 s et de 60 à 80 s, limité sur l'interface de Jellyfin) | Le lecteur décide | Le serveur pilote |", "|---|---|---|"]
         for k, name in (("stall_s", "Coupures (s)"), ("stalls", "Nombre de coupures"), ("playbackinfo", "Demandes de lecture"), ("position", "Position atteinte (s)"), ("video_errors", "Erreurs vidéo")):
             L.append(f"| {name} | {yo['player'].get(k)} | {yo['server'].get(k)} |")
-        for k, name in (("steps", "Qualités servies (kb/s)"), ("measure", "Mesure du serveur")):
+        for k, name in (("steps", "Qualités servies (kb/s)"), ("measure", "Mesure du serveur (fin)")):
             L.append(f"| {name} | {(yo['player'].get('server') or {}).get(k)} | {(yo['server'].get('server') or {}).get(k)} |")
+        for who in ("player", "server"):
+            tr_ = yo[who].get("server_trace") or []
+            L.append(f"- Mesure du serveur pendant la lecture ({'le lecteur décide' if who == 'player' else 'le serveur pilote'}) : "
+                     + " ".join(f"{t}s:{(r or 0) // 1000}Mb/s,{lead}s,q{q}" for t, r, lead, q in tr_[::2]))
     L += ["", "### " + ("Aucun problème détecté" if not problems else f"{len(problems)} problème(s)")] + [f"- {p}" for p in problems]
     (OUT / "report.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     print("\n".join(L))

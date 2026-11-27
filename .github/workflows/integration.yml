@@ -66,12 +66,6 @@ jobs:
           docker run -d --name jf -p 8096:8096 -v "$PWD/jf/config:/config" -v "$PWD/jf/cache:/cache" \
             -v "$PWD/media:/media:ro" -v "$PWD/probe:/probe" "$ABR_IMAGE"
 
-      - name: Network relay (Toxiproxy, bandwidth limited at the connection level)
-        run: |
-          docker run -d --name toxi --network host ghcr.io/shopify/toxiproxy:2.9.0
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8474/version >/dev/null 2>&1 && break; sleep 1; done
-          curl -fsS -X POST http://127.0.0.1:8474/proxies -d '{"name":"jf","listen":"127.0.0.1:8097","upstream":"127.0.0.1:8096"}'
-
       - name: Browser (Playwright, Google Chrome for H.264 and AAC)
         run: pip install -q playwright==1.49.1 && python -m playwright install --with-deps chrome >/dev/null
 
