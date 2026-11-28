@@ -40,6 +40,9 @@ public sealed class Session
     /// <summary>Mesure et décisions.</summary>
     public Governor Governor { get; }
 
+    /// <summary>Dernière qualité servie (-1 avant le premier segment) : un changement démarre un encodage.</summary>
+    public int LastServed { get; set; } = -1;
+
     /// <summary>Dernière activité (éviction).</summary>
     public DateTime Touched { get; set; } = DateTime.UtcNow;
 

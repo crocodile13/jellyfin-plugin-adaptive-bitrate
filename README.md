@@ -43,7 +43,7 @@ Every switch is checked on a real Jellyfin in CI, on the segments themselves (th
 | Minimum video bitrate | 700 kb/s | no quality below |
 | Higher qualities offered | 0 | above the starting quality, when the network improves (never beyond the file; exceeds the player's own limit) |
 | Adaptive stream instead of direct play | off | remote players get the adaptive stream instead of the file (experimental) |
-| Server control | off | wait before going back up (30 s), minimum gap between changes (10 s), bitrate margin (1.25), optional step-down ahead |
+| Server control | off | wait before going back up (30 s); minimum gap between changes, bitrate margin and measured segments are automatic by default (from the segment length and how steady the connection is); optional step-down ahead, timed from the encoder start measured on the server |
 | Diagnostic overlay | off | administrators only, or everyone |
 | Excluded apps | none | apps that keep Jellyfin's stream as is |
 

@@ -13,8 +13,11 @@ public sealed class GovernorOptions
     /// <summary>Après une descente, secondes avant de laisser remonter.</summary>
     public double HoldAfterDownSeconds { get; set; } = 30;
 
-    /// <summary>Secondes au moins entre deux changements (sauf une descente demandée par le lecteur : toujours immédiate).</summary>
-    public double MinChangeSeconds { get; set; } = 10;
+    /// <summary>
+    /// Secondes au moins entre deux changements (sauf une descente demandée par le lecteur : toujours immédiate). 0 =
+    /// automatique : 2,5 segments (le temps de voir si le réseau a vraiment changé), entre 6 et 30 s.
+    /// </summary>
+    public double MinChangeSeconds { get; set; }
 
     /// <summary>
     /// Descendre d'avance quand le débit mesuré ne suffit plus, avant que le tampon du lecteur ne se vide. Coupé par défaut :
@@ -23,21 +26,25 @@ public sealed class GovernorOptions
     /// </summary>
     public bool AnticipateDown { get; set; }
 
-    /// <summary>Marge de débit : une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge.</summary>
-    public double Margin { get; set; } = 1.25;
+    /// <summary>
+    /// Marge de débit : une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge. 0 =
+    /// automatique : 1 + deux fois la variabilité mesurée de la connexion (écart type / moyenne des derniers segments),
+    /// entre 1,1 et 2 ; 1,25 tant qu'il n'y a pas trois mesures.
+    /// </summary>
+    public double Margin { get; set; }
 
-    /// <summary>Segments mesurés au moins avant toute décision du serveur.</summary>
-    public int MinSamples { get; set; } = 2;
+    /// <summary>Segments mesurés au moins avant toute décision du serveur. 0 = automatique : de quoi couvrir 6 s de vidéo (1 à 5).</summary>
+    public int MinSamples { get; set; }
 
     /// <summary>Copie bornée.</summary>
     public GovernorOptions Sanitized() => new()
     {
         Enabled = Enabled,
         HoldAfterDownSeconds = Finite(HoldAfterDownSeconds, 30, 0, 600),
-        MinChangeSeconds = Finite(MinChangeSeconds, 10, 0, 300),
+        MinChangeSeconds = Finite(MinChangeSeconds, 0, 0, 300),
         AnticipateDown = AnticipateDown,
-        Margin = Finite(Margin, 1.25, 1.0, 3.0),
-        MinSamples = Math.Clamp(MinSamples, 1, 10),
+        Margin = Margin <= 0 || !double.IsFinite(Margin) ? 0 : Math.Clamp(Margin, 1.0, 3.0),
+        MinSamples = Math.Clamp(MinSamples, 0, 10),
     };
 
     private static double Finite(double v, double d, double lo, double hi) => double.IsFinite(v) ? Math.Clamp(v, lo, hi) : d;
@@ -74,9 +81,14 @@ public sealed record Decision(int Rung, Verdict Verdict);
 public sealed class Governor
 {
     private const int Window = 3;   // segments du débit lissé
+    private const int Spread = 6;   // segments de la variabilité (marge automatique)
+
+    private static readonly object StartupLock = new();
+    private static double _startup = double.NaN;
 
     private readonly IReadOnlyList<int> _bandwidth;   // débit annoncé de chaque marche (bits/s), du plus haut au plus bas
     private readonly Queue<double> _rates = new();
+    private double _segment = 3;
     private double _lastChange = double.NegativeInfinity, _lastDown = double.NegativeInfinity;
     private double _anchorWall = double.NaN, _anchorMedia, _media, _lastRequest = double.NaN;
     private int _lastSegment = -2;
@@ -93,7 +105,71 @@ public sealed class Governor
     public int Current { get; private set; }
 
     /// <summary>Débit d'envoi lissé (bits/s) sur les derniers segments, ou null avant la première mesure.</summary>
-    public double? Rate => _rates.Count > 0 ? _rates.Count / _rates.Sum(r => 1 / r) : null;   // moyenne harmonique : prudente
+    public double? Rate => _rates.Count > 0 ? Recent.Count / Recent.Sum(r => 1 / r) : null;   // moyenne harmonique : prudente
+
+    private List<double> Recent => _rates.Skip(Math.Max(0, _rates.Count - Window)).ToList();
+
+    /// <summary>
+    /// Temps de démarrage d'un encodage sur ce serveur (secondes, lissé sur les changements de qualité de toutes les
+    /// lectures), ou null avant le premier : rapide avec une carte graphique, plus lent sur le processeur.
+    /// </summary>
+    public static double? Startup
+    {
+        get
+        {
+            lock (StartupLock)
+            {
+                return double.IsNaN(_startup) ? null : _startup;
+            }
+        }
+    }
+
+    /// <summary>Un encodage a démarré en <paramref name="seconds"/> secondes (premier segment d'une nouvelle qualité).</summary>
+    public static void ReportStartup(double seconds)
+    {
+        if (!(seconds > 0) || !double.IsFinite(seconds) || seconds > 120)
+        {
+            return;
+        }
+
+        lock (StartupLock)
+        {
+            _startup = double.IsNaN(_startup) ? seconds : (0.7 * _startup) + (0.3 * seconds);
+        }
+    }
+
+    /// <summary>Remet à zéro le temps de démarrage mesuré (tests).</summary>
+    public static void ResetStartup()
+    {
+        lock (StartupLock)
+        {
+            _startup = double.NaN;
+        }
+    }
+
+    /// <summary>Écart minimal entre deux changements réellement appliqué (réglé, ou automatique).</summary>
+    public double MinChangeFor(GovernorOptions o) => o.MinChangeSeconds > 0 ? o.MinChangeSeconds : Math.Clamp(2.5 * _segment, 6, 30);
+
+    /// <summary>Segments mesurés avant une décision, réellement appliqués.</summary>
+    public int MinSamplesFor(GovernorOptions o) => o.MinSamples > 0 ? o.MinSamples : Math.Clamp((int)Math.Ceiling(6 / Math.Max(_segment, 0.5)), 1, 5);
+
+    /// <summary>Marge de débit réellement appliquée (réglée, ou d'après la variabilité mesurée de la connexion).</summary>
+    public double MarginFor(GovernorOptions o)
+    {
+        if (o.Margin > 0)
+        {
+            return o.Margin;
+        }
+
+        if (_rates.Count < 3)
+        {
+            return 1.25;
+        }
+
+        double mean = _rates.Average();
+        double sd = Math.Sqrt(_rates.Sum(r => (r - mean) * (r - mean)) / _rates.Count);
+        return 1 + Math.Clamp(2 * sd / mean, 0.1, 1.0);
+    }
 
     /// <summary>Segments mesurés.</summary>
     public int Samples => _rates.Count;
@@ -115,6 +191,11 @@ public sealed class Governor
     {
         var o = options.Sanitized();
         requested = Math.Clamp(requested, 0, _bandwidth.Count - 1);
+        if (seconds > 0)
+        {
+            _segment = seconds;
+        }
+
         Follow(segment, seconds, now);
         if (!o.Enabled)
         {
@@ -122,8 +203,9 @@ public sealed class Governor
         }
 
         int cur = Current;
-        bool measured = _rates.Count >= o.MinSamples && Rate is double;
+        bool measured = Recent.Count >= Math.Min(MinSamplesFor(o), Window) && _rates.Count >= MinSamplesFor(o) && Rate is double;
         double rate = Rate ?? 0;
+        double margin = MarginFor(o), minChange = MinChangeFor(o);
 
         // le lecteur descend : toujours tout de suite (le retarder ferait des coupures)
         if (requested > cur)
@@ -131,11 +213,14 @@ public sealed class Governor
             return Serve(requested, Verdict.AsRequested, now);
         }
 
-        // le débit ne suffit plus pour la qualité en cours : descendre d'avance, jusqu'à une marche qui passe
-        if (o.AnticipateDown && measured && rate < _bandwidth[cur] * o.Margin && now - _lastChange >= o.MinChangeSeconds && cur < _bandwidth.Count - 1)
+        // le débit ne suffit plus pour la qualité en cours : descendre d'avance, jusqu'à une marche qui passe, quand
+        // l'avance du lecteur ne couvre plus le démarrage d'un encodage plus le téléchargement du segment suivant à ce
+        // débit (avance inconnue : tout de suite)
+        bool tight = Lead is not double lead || lead < (Startup ?? 2) + (_segment * _bandwidth[cur] / Math.Max(rate, 1)) + _segment;
+        if (o.AnticipateDown && measured && rate < _bandwidth[cur] * margin && tight && now - _lastChange >= minChange && cur < _bandwidth.Count - 1)
         {
             int fit = cur + 1;
-            while (fit < _bandwidth.Count - 1 && rate < _bandwidth[fit] * o.Margin)
+            while (fit < _bandwidth.Count - 1 && rate < _bandwidth[fit] * margin)
             {
                 fit++;
             }
@@ -147,9 +232,9 @@ public sealed class Governor
         // le lecteur (ou le serveur) voudrait remonter : d'une marche à la fois, et seulement quand c'est sûr
         if (requested < cur)
         {
-            bool early = now - _lastDown < o.HoldAfterDownSeconds || now - _lastChange < o.MinChangeSeconds;
+            bool early = now - _lastDown < o.HoldAfterDownSeconds || now - _lastChange < minChange;
             int next = cur - 1;
-            bool fits = !measured || rate >= _bandwidth[next] * o.Margin;
+            bool fits = !measured || rate >= _bandwidth[next] * margin;
             if (early || !fits)
             {
                 if (!_holding)
@@ -177,7 +262,7 @@ public sealed class Governor
         }
 
         _rates.Enqueue(bytes * 8 / Math.Max(seconds, 0.005));
-        while (_rates.Count > Window)
+        while (_rates.Count > Spread)
         {
             _rates.Dequeue();
         }

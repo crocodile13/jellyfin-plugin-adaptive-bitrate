@@ -100,6 +100,62 @@ public class GovernorTests
     public void OutOfRangeSettingsAreBounded()
     {
         var s = new GovernorOptions { HoldAfterDownSeconds = -5, MinChangeSeconds = double.NaN, Margin = 0.2, MinSamples = 99 }.Sanitized();
-        Assert.Equal((0.0, 10.0, 1.0, 10), (s.HoldAfterDownSeconds, s.MinChangeSeconds, s.Margin, s.MinSamples));
+        Assert.Equal((0.0, 0.0, 1.0, 10), (s.HoldAfterDownSeconds, s.MinChangeSeconds, s.Margin, s.MinSamples));
+        Assert.Equal(0.0, new GovernorOptions { Margin = double.NaN }.Sanitized().Margin);    // 0 = automatique
+    }
+
+    [Fact]
+    public void AutomaticValuesFollowTheSegmentLengthAndTheConnectionsSteadiness()
+    {
+        var auto = new GovernorOptions { Enabled = true };
+        var g = new Governor(Ladder);
+        g.Decide(0, 0, 3, 0, auto);
+        Assert.Equal(7.5, g.MinChangeFor(auto));          // 2,5 segments de 3 s
+        Assert.Equal(2, g.MinSamplesFor(auto));           // 6 s de vidéo
+        Assert.Equal(1.25, g.MarginFor(auto));            // moins de trois mesures
+        var h = new Governor(Ladder);
+        h.Decide(0, 0, 20, 0, auto);
+        Assert.Equal(30, h.MinChangeFor(auto));           // plafond
+        Assert.Equal(1, h.MinSamplesFor(auto));
+        // connexion régulière : petite marge ; connexion irrégulière : grande marge
+        for (int i = 0; i < 6; i++) { g.Sent(1_000_000, 0.5); }
+        Assert.InRange(g.MarginFor(auto), 1.09, 1.11);
+        var k = new Governor(Ladder);
+        foreach (var t in new[] { 0.2, 0.9, 0.3, 1.2, 0.25, 0.8 }) { k.Sent(1_000_000, t); }
+        Assert.InRange(k.MarginFor(auto), 1.5, 2.0);
+        // une valeur réglée l'emporte
+        Assert.Equal(1.6, g.MarginFor(new GovernorOptions { Margin = 1.6 }));
+        Assert.Equal(12, g.MinChangeFor(new GovernorOptions { MinChangeSeconds = 12 }));
+    }
+
+    [Fact]
+    public void SteppingDownAheadWaitsUntilThePlayersLeadNoLongerCoversAnEncoderStart()
+    {
+        Governor.ResetStartup();
+        Governor.ReportStartup(2.0);
+        var o = new GovernorOptions { Enabled = true, AnticipateDown = true };
+        // le lecteur a plus de 40 s d'avance : le débit baisse (6 Mb/s pour 8,1), mais il reste le temps de voir venir
+        var g = new Governor(Ladder);
+        for (int i = 0; i < 12; i++) { g.Decide(0, i, 4, i * 0.1, o); }
+        Send(g, 0, 6); Send(g, 0, 6);
+        Assert.Equal(Verdict.AsRequested, g.Decide(0, 12, 4, 5, o).Verdict);
+        // un segment toutes les 9 s : l'avance fond de 5 s à chaque demande ; le serveur descend d'avance seulement
+        // quand elle ne couvre plus le démarrage (2 s) + le segment suivant à ce débit (5,4 s) + un segment (4 s)
+        double now = 5;
+        Verdict v = Verdict.AsRequested;
+        for (int seg = 13; seg < 30 && v == Verdict.AsRequested; seg++)
+        {
+            now += 9;
+            v = g.Decide(0, seg, 4, now, o).Verdict;
+            if (v == Verdict.AsRequested) { Assert.True(g.Lead >= 11.4, $"lead {g.Lead}"); }
+        }
+
+        Assert.Equal(Verdict.Anticipated, v);
+        Assert.True(g.Lead < 11.4);
+        Assert.InRange(Governor.Startup!.Value, 1.99, 2.01);
+        Governor.ReportStartup(-1);
+        Governor.ReportStartup(500);                       // valeurs absurdes ignorées
+        Assert.InRange(Governor.Startup!.Value, 1.99, 2.01);
+        Governor.ResetStartup();
     }
 }

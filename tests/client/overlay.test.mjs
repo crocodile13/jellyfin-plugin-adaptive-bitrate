@@ -39,7 +39,8 @@ function page(opts) {
         ajax: (o) => {
             calls.push(o.url);
             if (opts.denied) { return Promise.reject({ status: 403 }); }
-            return Promise.resolve({ texts: opts.texts || {}, session: { title: '<b>x</b>', offers: OFFERS, steps: [{ at: '2026-11-27T20:00:00Z', kbps: 0 }, { at: '2026-11-27T20:00:40Z', kbps: 4300 }], down: 1, up: 0 } });
+            return Promise.resolve({ texts: opts.texts || {}, session: { title: '<b>x</b>', offers: OFFERS, steps: [{ at: '2026-11-27T20:00:00Z', kbps: 0 }, { at: '2026-11-27T20:00:40Z', kbps: 4300 }], down: 1, up: 0,
+                server: opts.server === undefined ? { rateKbps: 9100, lead: 14.2, held: 0, anticipated: 0, margin: 1.32, minChange: 7.5, minSamples: 2, startup: 1.4 } : opts.server } });
         },
     };
     w.eval(JS);
@@ -60,6 +61,8 @@ await test('surcouche : qualité en cours, débit reçu, qualités proposées, t
     assert.match(text, /Tampon : 6,4 s d'avance/);
     assert.match(text, /Image affichée : 1280×720/);
     assert.match(text, /Images perdues : 3 \/ 2410/);
+    assert.match(text, /Mesure du serveur : 9,10 Mb\/s envoyés · avance du lecteur 14,2 s/);
+    assert.match(text, /Réglages appliqués : marge 1,32 · écart 7,5 s · 2 segments · démarrage d'un encodage 1,4 s/);
     assert.ok(calls.some((u) => u.includes('playSessionId=' + S)), 'la lecture demandée au serveur est celle du lecteur');
     assert.equal(p.querySelector('b'), null, 'rien n\'est inséré comme du HTML');
 });

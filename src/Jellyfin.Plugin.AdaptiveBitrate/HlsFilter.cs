@@ -87,8 +87,16 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
 
         if (d.ActionName == SegmentAction)
         {
-            Segment(context);
-            await next().ConfigureAwait(false);
+            // premier segment d'une qualité : Jellyfin démarre un encodage et attend le segment ; ce temps, mesuré sur
+            // ce serveur, règle le moment de la descente anticipée (mode automatique)
+            bool fresh = Segment(context);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var done = await next().ConfigureAwait(false);
+            if (fresh && done.Exception is null && done.Result is FileResult)
+            {
+                Governor.ReportStartup(clock.Elapsed.TotalSeconds);
+            }
+
             return;
         }
 
@@ -249,28 +257,32 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
     /// anticipée), notée pour la page et la surcouche. Toutes les qualités ont les mêmes segments aux mêmes instants
     /// (vérifié par le test d'intégration) et Jellyfin ne lit que les paramètres de qualité pour trouver le fichier :
     /// changer ces paramètres suffit. Lecture inconnue ou forme inattendue : la demande du lecteur passe telle quelle.
+    /// Vrai quand la qualité servie change (ou au premier segment) : un nouvel encodage démarre.
     /// </summary>
-    private void Segment(ActionExecutingContext context)
+    private bool Segment(ActionExecutingContext context)
     {
         try
         {
             var session = _sessions.Get(Arg<string>(context, "playSessionId"));
             if (session is null || Plugin.Instance?.Configuration is not { Enabled: true } cfg)
             {
-                return;
+                return false;
             }
 
             int requested = session.IndexOf(context.ActionArguments);
             if (requested < 0)
             {
-                return;
+                return false;
             }
 
             double seconds = Arg<long>(context, "actualSegmentLengthTicks") / 1e7;
             Decision decision;
+            bool fresh;
             lock (session)
             {
                 decision = session.Governor.Decide(requested, Arg<int>(context, "segmentId"), seconds > 0 ? seconds : 3, Now(), cfg.GovernorOptions());
+                fresh = decision.Rung != session.LastServed;
+                session.LastServed = decision.Rung;
             }
 
             var served = session.Rungs[decision.Rung];
@@ -287,10 +299,12 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             context.HttpContext.Items[ItemKey] = session;
             var kbps = served.Values.GetValueOrDefault("allowVideoStreamCopy") is false ? (int)(served.Bandwidth / 1000) : 0;
             _log.Requested(Arg<string>(context, "playSessionId") ?? string.Empty, kbps * 1000, DateTime.UtcNow);
+            return fresh;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Adaptive Bitrate: segment request left as is");
+            return false;
         }
     }
 

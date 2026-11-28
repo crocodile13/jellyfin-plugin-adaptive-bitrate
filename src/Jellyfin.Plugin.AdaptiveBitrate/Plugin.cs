@@ -28,18 +28,34 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     private void Migrate()
     {
         var c = Configuration;
-        if (c.SettingsVersion >= 1)
+        if (c.SettingsVersion >= 2)
         {
             return;
         }
 
         // 1.0.0 : rapport fixe de 0,6 entre qualités ; 1.0.1 : écart maximal de 0,5, l'échelle descend toujours jusqu'au minimum
-        if (Math.Abs(c.Step - 0.6) < 1e-9)
+        if (c.SettingsVersion < 1 && Math.Abs(c.Step - 0.6) < 1e-9)
         {
             c.Step = 0.5;
         }
 
-        c.SettingsVersion = 1;
+        // 1.2.0 : réactivité du pilotage automatique (anciens défauts fixes : 10 s, 1,25, 2 segments)
+        if (c.MinChangeSeconds == 10)
+        {
+            c.MinChangeSeconds = 0;
+        }
+
+        if (Math.Abs(c.Margin - 1.25) < 1e-9)
+        {
+            c.Margin = 0;
+        }
+
+        if (c.MinSamples == 2)
+        {
+            c.MinSamples = 0;
+        }
+
+        c.SettingsVersion = 2;
         SaveConfiguration();
     }
 

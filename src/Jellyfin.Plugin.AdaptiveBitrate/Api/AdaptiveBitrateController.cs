@@ -35,6 +35,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             return null;
         }
 
+        var o = Plugin.Instance?.Configuration.GovernorOptions() ?? new GovernorOptions().Sanitized();
         lock (s)
         {
             var g = s.Governor;
@@ -42,6 +43,9 @@ public sealed class AdaptiveBitrateController : ControllerBase
             {
                 rateKbps = g.Rate is double r ? (int)(r / 1000) : (int?)null, lead = g.Lead is double l ? Math.Round(l, 1) : (double?)null,
                 served = g.Current, held = g.Held, anticipated = g.Anticipated, samples = g.Samples,
+                // valeurs réellement appliquées (réglées, ou automatiques pour cette lecture)
+                margin = Math.Round(g.MarginFor(o), 2), minChange = Math.Round(g.MinChangeFor(o), 1), minSamples = g.MinSamplesFor(o),
+                startup = Governor.Startup is double st ? Math.Round(st, 1) : (double?)null,
             };
         }
     }
@@ -106,6 +110,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             tested,
             compatible = !HlsFilter.Incompatible,
             lastSkip = HlsFilter.LastSkip is { } s ? Texts.T(s, lang) : null,
+            startup = Governor.Startup is double st ? Math.Round(st, 1) : (double?)null,
             sessions = _log.Recent().Select(x => new
             {
                 title = x.Title, client = x.Client, offered = x.Offered, down = x.Down, up = x.Up,

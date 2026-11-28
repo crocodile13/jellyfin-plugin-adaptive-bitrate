@@ -17,7 +17,8 @@ async function test(name, fn) {
 
 const CFG = { Enabled: true, Scope: 'Remote', MaxRungs: 4, Step: 0.6, MinBitrateKbps: 700, RungsAbove: 0, AboveCapKbps: 0, PreferAdaptive: false, ExcludedClients: '', Language: 'System' };
 const STATUS = { jellyfin: '12.4.0.0', tested: true, compatible: true, sessions: [
-    { title: 'Film <b>gras</b>', client: 'Jellyfin Web', offered: 5, down: 2, up: 1, steps: [{ kbps: 0 }, { kbps: 2880 }, { kbps: 1728 }, { kbps: 4800 }] }] };
+    { title: 'Film <b>gras</b>', client: 'Jellyfin Web', offered: 5, down: 2, up: 1, steps: [{ kbps: 0 }, { kbps: 2880 }, { kbps: 1728 }, { kbps: 4800 }],
+      server: { rateKbps: 9100, held: 1, anticipated: 0, margin: 1.32, minChange: 7.5, minSamples: 2 } }], startup: 1.4 };
 
 async function open(cfg, opts) {
     const dom = new JSDOM('<!doctype html><html lang="' + ((opts && opts.lang) || 'fr') + '"><body>' + HTML.replace(/^[\s\S]*<body>|<\/body>[\s\S]*$/g, '') + '</body></html>',
@@ -52,6 +53,9 @@ await test('réglages lus, état et lectures récentes affichés (texte brut, ri
     assert.ok(cells.includes('Film <b>gras</b>'), 'titre affiché tel quel');
     assert.equal(d.querySelector('#abrSessions b'), null);
     assert.ok(cells.includes('origine → 2880 → 1728 → 4800'));
+    assert.ok(cells.includes('9100 kb/s, 1 remontées retenues, 0 descentes anticipées'));
+    assert.ok(cells.includes('marge 1,32 · écart 7,5 s · 2 segments'), 'valeurs réellement appliquées (automatiques)');
+    assert.match(d.getElementById('abrHealth').textContent, /Démarrage d'un encodage sur ce serveur : 1,4 s/);
 });
 
 await test('réglage sans effet : grisé avec la raison ; plugin coupé : tout grisé ; valeurs gardées', async () => {

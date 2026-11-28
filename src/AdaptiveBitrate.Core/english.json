@@ -7,7 +7,6 @@
   "Applications exclues": "Excluded apps",
   "Après une baisse de qualité, le temps pendant lequel la qualité ne remonte pas, même si le lecteur le demande : un réseau qui fait le yoyo ne fait pas changer l'image sans arrêt. 0 = aucune attente. Par défaut : 30.": "After a quality drop, how long the quality does not go back up, even if the player asks for it: a network going up and down does not keep changing the picture. 0 = no wait. Default: 30.",
   "Attente avant de remonter (s)": "Wait before going back up (s)",
-  "Aucune décision du serveur sur une seule mesure. Par défaut : 2.": "No server decision on a single measurement. Default: 2.",
   "Aucune lecture concernée depuis le démarrage du serveur.": "No playback concerned since the server started.",
   "Aucune qualité en dessous : l'image n'en vaudrait plus la peine. Par défaut : 700.": "No quality below this: the picture would no longer be worth it. Default: 700.",
   "Changements ({0} descentes, {1} montées)": "Changes ({0} down, {1} up)",
@@ -42,7 +41,6 @@
   "Pilotage par le serveur": "Server control",
   "Plafond des qualités plus hautes (kb/s)": "Cap of the higher qualities (kb/s)",
   "Plugin actif": "Plugin enabled",
-  "Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. Par défaut : 10.": "For changes decided by the server (going up, stepping down ahead); a drop asked by the player never waits. Default: 10.",
   "Qualité téléchargée": "Quality downloaded",
   "Qualités plus basses proposées": "Lower qualities offered",
   "Qualités plus hautes proposées": "Higher qualities offered",
@@ -57,7 +55,6 @@
   "Titre": "Title",
   "Un fichier lu directement n'a qu'une qualité : si le réseau faiblit, l'image s'arrête. Cette option fait passer les lecteurs concernés par le flux adaptatif ; la vidéo y est copiée telle quelle tant que le réseau suit (presque sans calcul pour le serveur), et transcodée seulement quand le lecteur descend.": "A file played directly has a single quality: if the network weakens, the picture stops. This option sends the players concerned through the adaptive stream; the video is copied as is while the network keeps up (almost no work for the server), and transcoded only when the player steps down.",
   "Une par ligne (ou séparées par des virgules) : une application dont le nom contient ce texte garde le flux de Jellyfin tel quel. Vide par défaut.": "One per line (or comma-separated): an app whose name contains this text keeps Jellyfin's stream as is. Empty by default.",
-  "Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. Par défaut : 1,25.": "A quality is only kept or reached if the measured bitrate exceeds its bitrate times this margin (1.25 = 25% headroom). Higher: more cautious, slightly lower picture. Default: 1.25.",
   "Une vraie échelle de qualités dans les flux de Jellyfin : quand le réseau faiblit, le lecteur passe à une qualité plus basse sans coupure, et remonte quand il revient. La nouvelle qualité est chargée avant le changement, à la limite d'un segment, avec la même piste audio et les mêmes sous-titres.": "A real quality ladder in Jellyfin's streams: when the network weakens, the player switches to a lower quality without a cut, and goes back up when it recovers. The new quality is loaded before the switch, at a segment boundary, with the same audio track and the same subtitles.",
   "administrateurs seulement": "administrators only",
   "application exclue": "excluded app",
@@ -87,5 +84,12 @@
   "Écart maximal entre deux qualités": "Maximum gap between two qualities",
   "Écart minimal entre deux changements (s)": "Minimum gap between two changes (s)",
   "Échelle de qualités": "Quality ladder",
-  "État": "Status"
+  "État": "Status",
+  "Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. 0 = automatique : deux segments et demi, entre 6 et 30 s. Par défaut : 0.": "For changes the server decides (going back up, stepping down ahead); a drop asked by the player never waits. 0 = automatic: two and a half segments, between 6 and 30 s. Default: 0.",
+  "Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. 0 = automatique : selon la régularité mesurée de la connexion, entre 1,1 et 2. Par défaut : 0.": "A quality is kept or reached only if the measured bitrate exceeds its bitrate times this margin (1.25 = 25% headroom). Higher: more cautious, slightly lower picture. 0 = automatic: from the measured steadiness of the connection, between 1.1 and 2. Default: 0.",
+  "Aucune décision du serveur sur une seule mesure. 0 = automatique : de quoi couvrir 6 s de vidéo. Par défaut : 0.": "No server decision on a single measurement. 0 = automatic: enough to cover 6 s of video. Default: 0.",
+  "Démarrage d'un encodage sur ce serveur : {0} s (mesuré aux changements de qualité).": "Encoder start on this server: {0} s (measured at quality changes).",
+  "Réglages appliqués": "Applied settings",
+  "marge {0} · écart {1} s · {2} segments": "margin {0} · gap {1} s · {2} segments",
+  "démarrage d'un encodage {0} s": "encoder start {0} s"
 }

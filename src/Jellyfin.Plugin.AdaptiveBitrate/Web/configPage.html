@@ -96,18 +96,18 @@
                             <div class="inputContainer" data-key="MinChangeSeconds">
                                 <label class="inputLabel" for="abrMinChangeSeconds" data-t="Écart minimal entre deux changements (s)">Écart minimal entre deux changements (s)</label>
                                 <input is="emby-input" type="number" id="abrMinChangeSeconds" min="0" max="300" step="1">
-                                <div class="fieldDescription" data-t="Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. Par défaut : 10.">Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. Par défaut : 10.</div>
+                                <div class="fieldDescription" data-t="Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. 0 = automatique : deux segments et demi, entre 6 et 30 s. Par défaut : 0.">Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. 0 = automatique : deux segments et demi, entre 6 et 30 s. Par défaut : 0.</div>
                             </div>
                             <label class="checkboxContainer" data-key="AnticipateDown"><input type="checkbox" is="emby-checkbox" id="abrAnticipateDown"><span data-t="Descendre d'avance quand le débit ne suffit plus">Descendre d'avance quand le débit ne suffit plus</span></label>
                             <div class="inputContainer" data-key="Margin">
                                 <label class="inputLabel" for="abrMargin" data-t="Marge de débit">Marge de débit</label>
-                                <input is="emby-input" type="number" id="abrMargin" min="1" max="3" step="0.05">
-                                <div class="fieldDescription" data-t="Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. Par défaut : 1,25.">Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. Par défaut : 1,25.</div>
+                                <input is="emby-input" type="number" id="abrMargin" min="0" max="3" step="0.05">
+                                <div class="fieldDescription" data-t="Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. 0 = automatique : selon la régularité mesurée de la connexion, entre 1,1 et 2. Par défaut : 0.">Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. 0 = automatique : selon la régularité mesurée de la connexion, entre 1,1 et 2. Par défaut : 0.</div>
                             </div>
                             <div class="inputContainer" data-key="MinSamples">
                                 <label class="inputLabel" for="abrMinSamples" data-t="Segments mesurés avant de décider">Segments mesurés avant de décider</label>
-                                <input is="emby-input" type="number" id="abrMinSamples" min="1" max="10" step="1">
-                                <div class="fieldDescription" data-t="Aucune décision du serveur sur une seule mesure. Par défaut : 2.">Aucune décision du serveur sur une seule mesure. Par défaut : 2.</div>
+                                <input is="emby-input" type="number" id="abrMinSamples" min="0" max="10" step="1">
+                                <div class="fieldDescription" data-t="Aucune décision du serveur sur une seule mesure. 0 = automatique : de quoi couvrir 6 s de vidéo. Par défaut : 0.">Aucune décision du serveur sur une seule mesure. 0 = automatique : de quoi couvrir 6 s de vidéo. Par défaut : 0.</div>
                             </div>
                         </div>
                     </div>
@@ -169,6 +169,7 @@
                 var dict = {};
                 var lang = 'fr';
                 function tr(s) { return dict[s] || s; }
+                function num(x, d) { var v = (Math.round(x * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); return lang === 'en' ? v : v.replace('.', ','); }
                 function trf(s) { var a = arguments; return tr(s).replace(/\{(\d+)\}/g, function (m, i) { return String(a[+i + 1]); }); }
                 function $(id) { return page.querySelector('#' + id); }
 
@@ -234,6 +235,11 @@
                             line.textContent = s.tested ? trf('Jellyfin {0} : testé.', s.jellyfin) : trf('Jellyfin {0} : pas encore testé avec ce plugin.', s.jellyfin);
                         }
                         h.appendChild(line);
+                        if (typeof s.startup === 'number') {
+                            var st = document.createElement('div');
+                            st.textContent = trf('Démarrage d\'un encodage sur ce serveur : {0} s (mesuré aux changements de qualité).', num(s.startup, 1));
+                            h.appendChild(st);
+                        }
                         var box = $('abrSessions');
                         box.textContent = '';
                         if (!s.sessions || !s.sessions.length) {
@@ -244,7 +250,7 @@
                         }
                         var t = document.createElement('table');
                         var head = t.insertRow();
-                        [tr('Titre'), tr('Application'), tr('Qualités proposées'), tr('Descentes'), tr('Montées'), tr('Débits successifs (kb/s)'), tr('Mesure du serveur')].forEach(function (x) {
+                        [tr('Titre'), tr('Application'), tr('Qualités proposées'), tr('Descentes'), tr('Montées'), tr('Débits successifs (kb/s)'), tr('Mesure du serveur'), tr('Réglages appliqués')].forEach(function (x) {
                             var th = document.createElement('th'); th.textContent = x; head.appendChild(th);
                         });
                         s.sessions.forEach(function (x) {
@@ -252,6 +258,7 @@
                             cell(r, x.title); cell(r, x.client); cell(r, x.offered); cell(r, x.down); cell(r, x.up);
                             cell(r, x.steps.map(function (p) { return p.kbps > 0 ? p.kbps : tr('origine'); }).join(' → '));
                             cell(r, x.server && x.server.rateKbps !== null ? trf('{0} kb/s, {1} remontées retenues, {2} descentes anticipées', x.server.rateKbps, x.server.held, x.server.anticipated) : '—');
+                            cell(r, x.server ? trf('marge {0} · écart {1} s · {2} segments', num(x.server.margin, 2), num(x.server.minChange, 1), x.server.minSamples) : '—');
                         });
                         box.appendChild(t);
                     });
@@ -282,8 +289,8 @@
                         c.HoldAfterDownSeconds = parseInt($('abrHoldAfterDownSeconds').value, 10) || 0;
                         c.MinChangeSeconds = parseInt($('abrMinChangeSeconds').value, 10) || 0;
                         c.AnticipateDown = $('abrAnticipateDown').checked;
-                        c.Margin = parseFloat(String($('abrMargin').value).replace(',', '.')) || 1.25;
-                        c.MinSamples = parseInt($('abrMinSamples').value, 10) || 2;
+                        c.Margin = parseFloat(String($('abrMargin').value).replace(',', '.')) || 0;
+                        c.MinSamples = parseInt($('abrMinSamples').value, 10) || 0;
                         c.ExcludedClients = $('abrExcludedClients').value;
                         c.Language = $('abrLanguage').value;
                         c.DebugOverlay = $('abrDebugOverlay').value;

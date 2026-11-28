@@ -7,7 +7,6 @@
   "Applications exclues": "Aplicaciones excluidas",
   "Après une baisse de qualité, le temps pendant lequel la qualité ne remonte pas, même si le lecteur le demande : un réseau qui fait le yoyo ne fait pas changer l'image sans arrêt. 0 = aucune attente. Par défaut : 30.": "Tras una bajada de calidad, el tiempo durante el que la calidad no vuelve a subir, aunque el reproductor lo pida: una red que sube y baja no hace cambiar la imagen sin parar. 0 = sin espera. Por defecto: 30.",
   "Attente avant de remonter (s)": "Espera antes de volver a subir (s)",
-  "Aucune décision du serveur sur une seule mesure. Par défaut : 2.": "Ninguna decisión del servidor con una sola medida. Por defecto: 2.",
   "Aucune lecture concernée depuis le démarrage du serveur.": "Ninguna reproducción afectada desde que se inició el servidor.",
   "Aucune qualité en dessous : l'image n'en vaudrait plus la peine. Par défaut : 700.": "Ninguna calidad por debajo: la imagen ya no valdría la pena. Por defecto: 700.",
   "Changements ({0} descentes, {1} montées)": "Cambios ({0} bajadas, {1} subidas)",
@@ -42,7 +41,6 @@
   "Pilotage par le serveur": "Control por el servidor",
   "Plafond des qualités plus hautes (kb/s)": "Límite de las calidades más altas (kb/s)",
   "Plugin actif": "Plugin activo",
-  "Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. Par défaut : 10.": "Para los cambios decididos por el servidor (subir, bajar por adelantado); una bajada pedida por el reproductor nunca espera. Por defecto: 10.",
   "Qualité téléchargée": "Calidad descargada",
   "Qualités plus basses proposées": "Calidades más bajas ofrecidas",
   "Qualités plus hautes proposées": "Calidades más altas ofrecidas",
@@ -57,7 +55,6 @@
   "Titre": "Título",
   "Un fichier lu directement n'a qu'une qualité : si le réseau faiblit, l'image s'arrête. Cette option fait passer les lecteurs concernés par le flux adaptatif ; la vidéo y est copiée telle quelle tant que le réseau suit (presque sans calcul pour le serveur), et transcodée seulement quand le lecteur descend.": "Un archivo reproducido directamente tiene una sola calidad: si la red se debilita, la imagen se detiene. Esta opción hace pasar a los reproductores afectados por el flujo adaptativo; el vídeo se copia tal cual mientras la red aguanta (casi sin trabajo para el servidor) y solo se transcodifica cuando el reproductor baja.",
   "Une par ligne (ou séparées par des virgules) : une application dont le nom contient ce texte garde le flux de Jellyfin tel quel. Vide par défaut.": "Una por línea (o separadas por comas): una aplicación cuyo nombre contiene este texto conserva el flujo de Jellyfin tal cual. Vacío por defecto.",
-  "Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. Par défaut : 1,25.": "Una calidad solo se mantiene o alcanza si la tasa medida supera su tasa por este margen (1,25 = 25 % de reserva). Más alto: más prudente, imagen algo más baja. Por defecto: 1,25.",
   "Une vraie échelle de qualités dans les flux de Jellyfin : quand le réseau faiblit, le lecteur passe à une qualité plus basse sans coupure, et remonte quand il revient. La nouvelle qualité est chargée avant le changement, à la limite d'un segment, avec la même piste audio et les mêmes sous-titres.": "Una verdadera escalera de calidades en los flujos de Jellyfin: cuando la red se debilita, el reproductor pasa a una calidad más baja sin cortes y vuelve a subir cuando se recupera. La nueva calidad se carga antes del cambio, en el límite de un segmento, con la misma pista de audio y los mismos subtítulos.",
   "administrateurs seulement": "solo administradores",
   "application exclue": "aplicación excluida",
@@ -87,5 +84,12 @@
   "Écart maximal entre deux qualités": "Separación máxima entre dos calidades",
   "Écart minimal entre deux changements (s)": "Separación mínima entre dos cambios (s)",
   "Échelle de qualités": "Escalera de calidades",
-  "État": "Estado"
+  "État": "Estado",
+  "Pour les changements décidés par le serveur (remonter, descendre d'avance) ; une baisse demandée par le lecteur n'attend jamais. 0 = automatique : deux segments et demi, entre 6 et 30 s. Par défaut : 0.": "Para los cambios que decide el servidor (volver a subir, bajar por adelantado); una bajada pedida por el reproductor nunca espera. 0 = automático: dos segmentos y medio, entre 6 y 30 s. Por defecto: 0.",
+  "Une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit fois cette marge (1,25 = 25 % de réserve). Plus haut : plus prudent, image un peu plus basse. 0 = automatique : selon la régularité mesurée de la connexion, entre 1,1 et 2. Par défaut : 0.": "Una calidad solo se mantiene o se alcanza si la tasa medida supera su tasa por este margen (1,25 = 25 % de reserva). Más alto: más prudente, imagen algo más baja. 0 = automático: según la regularidad medida de la conexión, entre 1,1 y 2. Por defecto: 0.",
+  "Aucune décision du serveur sur une seule mesure. 0 = automatique : de quoi couvrir 6 s de vidéo. Par défaut : 0.": "Ninguna decisión del servidor con una sola medida. 0 = automático: lo necesario para cubrir 6 s de vídeo. Por defecto: 0.",
+  "Démarrage d'un encodage sur ce serveur : {0} s (mesuré aux changements de qualité).": "Arranque de una codificación en este servidor: {0} s (medido en los cambios de calidad).",
+  "Réglages appliqués": "Ajustes aplicados",
+  "marge {0} · écart {1} s · {2} segments": "margen {0} · separación {1} s · {2} segmentos",
+  "démarrage d'un encodage {0} s": "arranque de codificación {0} s"
 }
