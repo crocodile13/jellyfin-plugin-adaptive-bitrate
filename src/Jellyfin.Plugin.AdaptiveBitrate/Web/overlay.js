@@ -135,8 +135,16 @@
         }
         if (info && info.server) {
             var m = info.server;
-            line(body, tr('Mesure du serveur'), (m.rateKbps === null ? '—' : trf('{0} Mb/s envoyés', num(m.rateKbps / 1000, 2)))
+            line(body, tr('Mesure du serveur'), (m.rateKbps === null ? '—' : trf('{0} Mb/s livrés au lecteur', num(m.rateKbps / 1000, 2)))
                 + (m.lead === null ? '' : ' · ' + trf('avance du lecteur {0} s', num(m.lead, 1))));
+            if (typeof m.encoderWait === 'number' && m.encoderWait >= 0.05) {
+                line(body, tr('Encodage'), trf('{0} s d\'attente par segment de {1} s', num(m.encoderWait, 2), num(m.segment, 1)));
+            }
+            if (m.pilotable === false) { line(body, tr('Décisions du serveur'), tr('segments fMP4 : le serveur mesure sans piloter')); }
+            if (typeof m.margin === 'number') {
+                line(body, tr('Réglages appliqués'), trf('marge {0} · écart {1} s · {2} segments', num(m.margin, 2), num(m.minChange, 1), m.minSamples)
+                    + (typeof m.startup === 'number' ? ' · ' + trf('démarrage d\'un encodage {0} s', num(m.startup, 1)) : ''));
+            }
             if (m.held || m.anticipated) { line(body, tr('Décisions du serveur'), trf('{0} remontées retenues, {1} descentes anticipées', m.held, m.anticipated)); }
         }
         var ahead = 0;

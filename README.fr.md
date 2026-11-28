@@ -43,7 +43,7 @@ Chaque changement de qualité est vérifié sur un vrai Jellyfin dans la CI, sur
 | Débit vidéo minimal | 700 kb/s | aucune qualité en dessous |
 | Qualités plus hautes proposées | 0 | au-dessus de la qualité de départ, quand le réseau s'améliore (jamais au-delà du fichier ; dépasse la limite réglée dans le lecteur) |
 | Flux adaptatif plutôt que lecture directe | coupé | les lecteurs distants reçoivent le flux adaptatif au lieu du fichier (expérimental) |
-| Pilotage par le serveur | coupé | attente avant de remonter (30 s), écart minimal entre deux changements (10 s), marge de débit (1,25), descente anticipée en option |
+| Pilotage par le serveur | coupé | attente avant de remonter (30 s) ; écart minimal entre deux changements, marge de débit et segments mesurés automatiques par défaut (selon la durée des segments et la régularité de la connexion) ; descente anticipée en option, au moment dicté par le temps de démarrage d'un encodage mesuré sur le serveur |
 | Surcouche de diagnostic | coupée | administrateurs seulement, ou tout le monde |
 | Applications exclues | aucune | applications qui gardent le flux de Jellyfin tel quel |
 

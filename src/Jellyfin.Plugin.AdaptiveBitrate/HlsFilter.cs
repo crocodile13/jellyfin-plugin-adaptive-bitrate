@@ -43,6 +43,9 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
     public const string SegmentAction = "GetHlsVideoSegment";
 
     private const string ItemKey = "AdaptiveBitrate.Session";
+    private const string AskedKey = "AdaptiveBitrate.Asked";
+    private const string FreshKey = "AdaptiveBitrate.Fresh";
+    private const string SegmentKey = "AdaptiveBitrate.Segment";
 
     /// <summary>Paramètres de l'action dont dépend le plugin (vérifiés avant tout appel).</summary>
     public static readonly string[] Required = { "itemId", "mediaSourceId", "videoBitRate", "maxHeight", "maxWidth", "width", "height", "allowVideoStreamCopy", "enableAutoStreamCopy", "enableAdaptiveBitrateStreaming", "liveStreamId", "playSessionId" };
@@ -87,7 +90,11 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
 
         if (d.ActionName == SegmentAction)
         {
-            Segment(context);
+            // premier segment d'une qualité : Jellyfin démarre un encodage et attend le segment ; ce temps, mesuré sur
+            // ce serveur, règle le moment de la descente anticipée (mode automatique)
+            context.HttpContext.Items[AskedKey] = Now();
+            context.HttpContext.Items[SegmentKey] = Arg<int>(context, "segmentId");
+            context.HttpContext.Items[FreshKey] = Segment(context);
             await next().ConfigureAwait(false);
             return;
         }
@@ -179,7 +186,7 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             executed.Result = new FileContentResult(Encoding.UTF8.GetBytes(merged), original.ContentType);
             var offers = MasterPlaylist.Variants(merged).Select(v => new Offer((int)(v.Bandwidth / 1000), MasterPlaylist.Attribute(v.Info, "RESOLUTION") ?? string.Empty)).ToList();
             var session = Arg<string>(context, "playSessionId") ?? string.Empty;
-            _log.Started(session, TitleOf(context), ClientOf(context), offers);
+            _log.Started(session, TitleOf(context), ClientOf(context), offers, UserOf(context));
             _sessions.Start(session, known.OrderByDescending(x => x.Bandwidth).ToList());
         }
         catch (Exception ex)
@@ -249,28 +256,42 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
     /// anticipée), notée pour la page et la surcouche. Toutes les qualités ont les mêmes segments aux mêmes instants
     /// (vérifié par le test d'intégration) et Jellyfin ne lit que les paramètres de qualité pour trouver le fichier :
     /// changer ces paramètres suffit. Lecture inconnue ou forme inattendue : la demande du lecteur passe telle quelle.
+    /// Vrai quand la qualité servie change (ou au premier segment) : un nouvel encodage démarre.
     /// </summary>
-    private void Segment(ActionExecutingContext context)
+    private bool Segment(ActionExecutingContext context)
     {
         try
         {
             var session = _sessions.Get(Arg<string>(context, "playSessionId"));
             if (session is null || Plugin.Instance?.Configuration is not { Enabled: true } cfg)
             {
-                return;
+                return false;
             }
 
             int requested = session.IndexOf(context.ActionArguments);
             if (requested < 0)
             {
-                return;
+                return false;
             }
 
             double seconds = Arg<long>(context, "actualSegmentLengthTicks") / 1e7;
+            // segments fMP4 : chaque encodage a son propre en-tête d'initialisation (-1.mp4), que le lecteur ne recharge
+            // qu'en changeant lui-même de qualité ; un segment d'une autre qualité derrière cet en-tête casserait l'image.
+            // Le serveur ne pilote donc que les segments TS (paramètres de l'image dans chaque segment) ; en fMP4, il mesure.
+            var options = cfg.GovernorOptions();
+            if (!string.Equals(Arg<string>(context, "container"), "ts", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Enabled = false;
+                session.Pilotable = false;
+            }
+
             Decision decision;
+            bool fresh;
             lock (session)
             {
-                decision = session.Governor.Decide(requested, Arg<int>(context, "segmentId"), seconds > 0 ? seconds : 3, Now(), cfg.GovernorOptions());
+                decision = session.Governor.Decide(requested, Arg<int>(context, "segmentId"), seconds > 0 ? seconds : 3, Now(), options);
+                fresh = decision.Rung != session.LastServed;
+                session.LastServed = decision.Rung;
             }
 
             var served = session.Rungs[decision.Rung];
@@ -287,10 +308,12 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             context.HttpContext.Items[ItemKey] = session;
             var kbps = served.Values.GetValueOrDefault("allowVideoStreamCopy") is false ? (int)(served.Bandwidth / 1000) : 0;
             _log.Requested(Arg<string>(context, "playSessionId") ?? string.Empty, kbps * 1000, DateTime.UtcNow);
+            return fresh;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Adaptive Bitrate: segment request left as is");
+            return false;
         }
     }
 
@@ -303,13 +326,21 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             return;
         }
 
-        // mesure : temps d'envoi du segment au lecteur (au-delà des tampons du système, la vitesse de sa connexion)
-        var clock = System.Diagnostics.Stopwatch.StartNew();
+        // envoi : son début (après l'attente de l'encodeur) et sa taille ; sa durée de livraison se lit à la demande du
+        // segment suivant (Governor.Sending). Le temps de l'envoi lui-même ne dit rien : le système l'avale dans son tampon.
+        double start = Now();
         await next().ConfigureAwait(false);
         long bytes = context.HttpContext.Response.ContentLength ?? (context.Result is PhysicalFileResult f && System.IO.File.Exists(f.FileName) ? new System.IO.FileInfo(f.FileName).Length : 0);
+        double waited = context.HttpContext.Items[AskedKey] is double asked ? start - asked : -1;
+        if (waited >= 0 && context.HttpContext.Items[FreshKey] is true)
+        {
+            // premier segment d'une qualité : Jellyfin a démarré un encodage et attendu ce segment
+            Governor.ReportStartup(waited);
+        }
+
         lock (session)
         {
-            session.Governor.Sent(bytes, clock.Elapsed.TotalSeconds);
+            session.Governor.Sending(context.HttpContext.Items[SegmentKey] is int seg ? seg : -10, bytes, start, waited);
         }
     }
 
@@ -331,8 +362,8 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
         if (Arg<Guid>(context, "itemId") is var id && id != Guid.Empty && _library.GetItemById(id) is BaseItem item)
         {
             var sourceId = Arg<string>(context, "mediaSourceId");
-            var source = _sources.GetStaticMediaSources(item, false).FirstOrDefault(s => string.Equals(s.Id, sourceId, StringComparison.OrdinalIgnoreCase))
-                ?? _sources.GetStaticMediaSources(item, false).FirstOrDefault();
+            var all = _sources.GetStaticMediaSources(item, false);
+            var source = all.FirstOrDefault(s => string.Equals(s.Id, sourceId, StringComparison.OrdinalIgnoreCase)) ?? all.FirstOrDefault();
             var video = source?.MediaStreams?.FirstOrDefault(s => s.Type == MediaStreamType.Video);
             if (video is not null)
             {
@@ -346,6 +377,8 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
 
     private string TitleOf(ActionExecutingContext context)
         => Arg<Guid>(context, "itemId") is var id && id != Guid.Empty && _library.GetItemById(id) is BaseItem item ? item.Name ?? string.Empty : string.Empty;
+
+    private static string UserOf(ActionExecutingContext context) => context.HttpContext.User.FindFirst("Jellyfin-UserId")?.Value ?? string.Empty;
 
     private static string ClientOf(ActionExecutingContext context) => context.HttpContext.User.FindFirst("Jellyfin-Client")?.Value ?? string.Empty;
 

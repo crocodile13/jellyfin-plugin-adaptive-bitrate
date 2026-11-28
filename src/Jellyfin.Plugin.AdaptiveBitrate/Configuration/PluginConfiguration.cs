@@ -87,17 +87,17 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Après une descente, secondes avant de laisser remonter.</summary>
     public int HoldAfterDownSeconds { get; set; } = 30;
 
-    /// <summary>Secondes au moins entre deux changements décidés par le serveur.</summary>
-    public int MinChangeSeconds { get; set; } = 10;
+    /// <summary>Secondes au moins entre deux changements décidés par le serveur (0 = automatique, selon la durée des segments).</summary>
+    public int MinChangeSeconds { get; set; }
 
     /// <summary>Descendre d'avance quand le débit mesuré ne suffit plus (coupé : voir <see cref="GovernorOptions.AnticipateDown"/>).</summary>
     public bool AnticipateDown { get; set; }
 
-    /// <summary>Marge de débit (une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge).</summary>
-    public double Margin { get; set; } = 1.25;
+    /// <summary>Marge de débit (une qualité n'est gardée ou atteinte que si le débit mesuré dépasse son débit × cette marge ; 0 = automatique, selon la régularité de la connexion).</summary>
+    public double Margin { get; set; }
 
-    /// <summary>Segments mesurés au moins avant une décision du serveur.</summary>
-    public int MinSamples { get; set; } = 2;
+    /// <summary>Segments mesurés au moins avant une décision du serveur (0 = automatique, selon la durée des segments).</summary>
+    public int MinSamples { get; set; }
 
     /// <summary>Réglages du pilotage pour le moteur.</summary>
     public GovernorOptions GovernorOptions() => new GovernorOptions

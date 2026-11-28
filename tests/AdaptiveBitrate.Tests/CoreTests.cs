@@ -150,6 +150,17 @@ public class SwitchLogTests
     }
 
     [Fact]
+    public void EachPlaybackRemembersWhoStartedIt()
+    {
+        var log = new SwitchLog();
+        log.Started("s1", "Film", "Jellyfin Web", Array.Empty<Offer>(), "a1b2");
+        log.Started("s2", "Film", "Jellyfin Web", Array.Empty<Offer>());
+        Assert.Equal("a1b2", log.Owner("s1"));
+        Assert.Equal(string.Empty, log.Owner("s2"));
+        Assert.Null(log.Owner("inconnue"));
+    }
+
+    [Fact]
     public void MemoryIsBounded()
     {
         var log = new SwitchLog();
