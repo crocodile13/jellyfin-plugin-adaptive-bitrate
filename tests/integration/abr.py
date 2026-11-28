@@ -329,6 +329,7 @@ VIDEO_JS = """() => { const v = document.querySelector('video'); if (!v) return 
   if (!sub) { for (const tt of v.textTracks || []) { if (tt.mode === 'showing' && tt.activeCues && tt.activeCues.length) { sub = tt.activeCues[0].text; } } }
   return { t: v.currentTime, err: v.error ? v.error.code : 0, sub, paused: v.paused, ready: v.readyState, ended: v.ended,
            buf: v.buffered.length ? v.buffered.end(v.buffered.length - 1) - v.currentTime : 0,
+           hole: (() => { let h = 0; for (let i = 0; i + 1 < v.buffered.length; i++) { if (v.buffered.end(i) > v.currentTime - 0.1) { h = Math.max(h, v.buffered.start(i + 1) - v.buffered.end(i)); } } return h; })(),
            audio: v.webkitAudioDecodedByteCount || 0, frames: v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().totalVideoFrames : 0 }; }"""
 
 
@@ -398,7 +399,7 @@ def browser_run(item, label: str, profile=None, length=130, shaped=False):
                     applied = kbps
                 if int(s) % 2 == 0:
                     m = (last_session().get("measure") or {})
-                    res.setdefault("server_trace", []).append((round(s), m.get("rateKbps"), m.get("lead"), m.get("served")))
+                    res.setdefault("server_trace", []).append((round(s), m.get("rateKbps"), m.get("lead"), m.get("served"), m.get("skipped")))
             else:
                 cdp.send("Network.emulateNetworkConditions", {"offline": False, "latency": 20, "downloadThroughput": kbps * 1000 / 8 if kbps > 0 else -1,
                                                               "uploadThroughput": -1})
@@ -423,6 +424,10 @@ def browser_run(item, label: str, profile=None, length=130, shaped=False):
         res["position"] = samples[-1]["t"] if samples else 0
         res["audio_growing"] = len(samples) > 10 and samples[-1]["audio"] > samples[len(samples) // 2]["audio"] > samples[0]["audio"]
         res["video_errors"] = sorted(set(x["err"] for x in samples if x.get("err")))
+        # flux sans rupture : aucun trou dans la vidéo chargée devant la lecture, images décodées en continu hors coupures
+        res["max_hole"] = round(max((x.get("hole") or 0 for x in samples), default=0), 2)
+        frozen = [x["s"] for a, x in zip(samples, samples[1:]) if x["frames"] <= a["frames"] and abs(x["t"] - a["t"]) > 0.5]
+        res["frozen_picture"] = frozen[:5]
         # sous-titres : la ligne affichée est celle du moment (« Subtitle line N » de N*5-5 à N*5-1 s) ; on ignore les
         # instants à moins d'une demi-seconde d'un changement de ligne (relevé toutes les secondes)
         subs = [x for x in samples if x.get("sub")]
@@ -480,6 +485,22 @@ def browser_checks(item):
     check(changes(ss) <= changes(sp), f"pilotage par le serveur : changements de qualité {changes(ss)} contre {changes(sp)} sans")
     check(yoyo_server["stall_s"] <= yoyo_player["stall_s"] + 2,
           f"pilotage par le serveur : coupures {yoyo_server['stall_s']} s contre {yoyo_player['stall_s']} s sans (réseau en yoyo)")
+    # la mesure du serveur suit le réseau réel (bridé sur l'interface de Jellyfin) : pendant les plages bridées (après
+    # 8 s), proche de 1,6 Mb/s ; réseau libre revenu (après 10 s), bien au-dessus. L'ancienne mesure (temps d'envoi)
+    # restait vers 1 Gb/s même bridée : ce contrôle l'aurait vue.
+    for name, run_ in (("le lecteur décide", yoyo_player), ("le serveur pilote", yoyo_server)):
+        trace = [x for x in run_.get("server_trace") or [] if x[1]]
+        shaped = sorted(x[1] for x in trace if any(a + 8 <= x[0] < b for a, b, _ in YOYO))
+        free = sorted(x[1] for x in trace if x[0] >= YOYO[-1][1] + 10)
+        med = lambda v: v[len(v) // 2] if v else None
+        check(len(shaped) >= 3 and 800 <= med(shaped) <= 3200,
+              f"mesure du serveur ({name}) : réseau bridé à 1600 kb/s, mesure médiane {med(shaped)} kb/s ({len(shaped)} relevés)")
+        check(len(free) >= 2 and med(free) >= 8000, f"mesure du serveur ({name}) : réseau libre, mesure médiane {med(free)} kb/s")
+        skipped = max((x[4] or 0 for x in run_.get("server_trace") or []), default=0)
+        check(skipped == 0, f"flux sans rupture ({name}) : aucun segment sauté par le lecteur ({skipped})")
+    for run_ in (on, yoyo_player, yoyo_server):
+        check(run_["max_hole"] <= 0.1, f"flux sans rupture ({run_['label']}) : aucun trou dans la vidéo chargée devant la lecture ({run_['max_hole']} s)")
+        check(not run_["frozen_picture"], f"flux sans rupture ({run_['label']}) : l'image avance avec la lecture ({run_['frozen_picture']})")
     # première qualité demandée = celle de départ ; une demande ensuite d'une autre playlist = un changement de qualité
     start = on["variants"][0][1] if on["variants"] else None
     changed = [x for x in on["variants"][1:] if x[1] != start]

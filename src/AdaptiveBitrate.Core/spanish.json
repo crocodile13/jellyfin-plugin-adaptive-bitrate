@@ -76,7 +76,6 @@
   "transcodage vidéo interdit au compte": "transcodificación de vídeo no permitida a la cuenta",
   "{0} Mb/s": "{0} Mb/s",
   "{0} Mb/s (dernier segment) · {1} Mb/s (5 derniers)": "{0} Mb/s (último segmento) · {1} Mb/s (últimos 5)",
-  "{0} Mb/s envoyés": "{0} Mb/s enviados",
   "{0} kb/s, {1} remontées retenues, {2} descentes anticipées": "{0} kb/s, {1} subidas retenidas, {2} bajadas anticipadas",
   "{0} remontées retenues, {1} descentes anticipées": "{0} subidas retenidas, {1} bajadas anticipadas",
   "{0} s d'avance": "{0} s por delante",
@@ -91,5 +90,8 @@
   "Démarrage d'un encodage sur ce serveur : {0} s (mesuré aux changements de qualité).": "Arranque de una codificación en este servidor: {0} s (medido en los cambios de calidad).",
   "Réglages appliqués": "Ajustes aplicados",
   "marge {0} · écart {1} s · {2} segments": "margen {0} · separación {1} s · {2} segmentos",
-  "démarrage d'un encodage {0} s": "arranque de codificación {0} s"
+  "démarrage d'un encodage {0} s": "arranque de codificación {0} s",
+  "{0} Mb/s livrés au lecteur": "{0} Mb/s entregados al reproductor",
+  "Encodage": "Codificación",
+  "{0} s d'attente par segment de {1} s": "{0} s de espera por segmento de {1} s"
 }

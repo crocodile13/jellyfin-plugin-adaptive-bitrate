@@ -76,7 +76,6 @@
   "transcodage vidéo interdit au compte": "video transcoding not allowed for the account",
   "{0} Mb/s": "{0} Mb/s",
   "{0} Mb/s (dernier segment) · {1} Mb/s (5 derniers)": "{0} Mb/s (last segment) · {1} Mb/s (last 5)",
-  "{0} Mb/s envoyés": "{0} Mb/s sent",
   "{0} kb/s, {1} remontées retenues, {2} descentes anticipées": "{0} kb/s, {1} rises held, {2} drops anticipated",
   "{0} remontées retenues, {1} descentes anticipées": "{0} rises held, {1} drops anticipated",
   "{0} s d'avance": "{0} s ahead",
@@ -91,5 +90,8 @@
   "Démarrage d'un encodage sur ce serveur : {0} s (mesuré aux changements de qualité).": "Encoder start on this server: {0} s (measured at quality changes).",
   "Réglages appliqués": "Applied settings",
   "marge {0} · écart {1} s · {2} segments": "margin {0} · gap {1} s · {2} segments",
-  "démarrage d'un encodage {0} s": "encoder start {0} s"
+  "démarrage d'un encodage {0} s": "encoder start {0} s",
+  "{0} Mb/s livrés au lecteur": "{0} Mb/s delivered to the player",
+  "Encodage": "Encoding",
+  "{0} s d'attente par segment de {1} s": "{0} s wait per {1} s segment"
 }

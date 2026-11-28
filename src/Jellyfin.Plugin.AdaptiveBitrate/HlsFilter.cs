@@ -43,6 +43,9 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
     public const string SegmentAction = "GetHlsVideoSegment";
 
     private const string ItemKey = "AdaptiveBitrate.Session";
+    private const string AskedKey = "AdaptiveBitrate.Asked";
+    private const string FreshKey = "AdaptiveBitrate.Fresh";
+    private const string SegmentKey = "AdaptiveBitrate.Segment";
 
     /// <summary>Paramètres de l'action dont dépend le plugin (vérifiés avant tout appel).</summary>
     public static readonly string[] Required = { "itemId", "mediaSourceId", "videoBitRate", "maxHeight", "maxWidth", "width", "height", "allowVideoStreamCopy", "enableAutoStreamCopy", "enableAdaptiveBitrateStreaming", "liveStreamId", "playSessionId" };
@@ -89,14 +92,10 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
         {
             // premier segment d'une qualité : Jellyfin démarre un encodage et attend le segment ; ce temps, mesuré sur
             // ce serveur, règle le moment de la descente anticipée (mode automatique)
-            bool fresh = Segment(context);
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            var done = await next().ConfigureAwait(false);
-            if (fresh && done.Exception is null && done.Result is FileResult)
-            {
-                Governor.ReportStartup(clock.Elapsed.TotalSeconds);
-            }
-
+            context.HttpContext.Items[AskedKey] = Now();
+            context.HttpContext.Items[SegmentKey] = Arg<int>(context, "segmentId");
+            context.HttpContext.Items[FreshKey] = Segment(context);
+            await next().ConfigureAwait(false);
             return;
         }
 
@@ -317,13 +316,21 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             return;
         }
 
-        // mesure : temps d'envoi du segment au lecteur (au-delà des tampons du système, la vitesse de sa connexion)
-        var clock = System.Diagnostics.Stopwatch.StartNew();
+        // envoi : son début (après l'attente de l'encodeur) et sa taille ; sa durée de livraison se lit à la demande du
+        // segment suivant (Governor.Sending). Le temps de l'envoi lui-même ne dit rien : le système l'avale dans son tampon.
+        double start = Now();
         await next().ConfigureAwait(false);
         long bytes = context.HttpContext.Response.ContentLength ?? (context.Result is PhysicalFileResult f && System.IO.File.Exists(f.FileName) ? new System.IO.FileInfo(f.FileName).Length : 0);
+        double waited = context.HttpContext.Items[AskedKey] is double asked ? start - asked : -1;
+        if (waited >= 0 && context.HttpContext.Items[FreshKey] is true)
+        {
+            // premier segment d'une qualité : Jellyfin a démarré un encodage et attendu ce segment
+            Governor.ReportStartup(waited);
+        }
+
         lock (session)
         {
-            session.Governor.Sent(bytes, clock.Elapsed.TotalSeconds);
+            session.Governor.Sending(context.HttpContext.Items[SegmentKey] is int seg ? seg : -10, bytes, start, waited);
         }
     }
 

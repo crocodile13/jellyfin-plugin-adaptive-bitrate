@@ -43,6 +43,8 @@ public sealed class AdaptiveBitrateController : ControllerBase
             {
                 rateKbps = g.Rate is double r ? (int)(r / 1000) : (int?)null, lead = g.Lead is double l ? Math.Round(l, 1) : (double?)null,
                 served = g.Current, held = g.Held, anticipated = g.Anticipated, samples = g.Samples,
+                paced = g.Paced, skipped = g.Skipped, segment = Math.Round(g.SegmentSeconds, 1),
+                encoderWait = g.EncoderLoad is double w ? Math.Round(w * g.SegmentSeconds, 2) : (double?)null,
                 // valeurs réellement appliquées (réglées, ou automatiques pour cette lecture)
                 margin = Math.Round(g.MarginFor(o), 2), minChange = Math.Round(g.MinChangeFor(o), 1), minSamples = g.MinSamplesFor(o),
                 startup = Governor.Startup is double st ? Math.Round(st, 1) : (double?)null,
