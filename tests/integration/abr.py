@@ -275,7 +275,7 @@ def api_checks(item):
 
 def probe(path: Path) -> dict:
     r = subprocess.run(["docker", "exec", JF, "/usr/lib/jellyfin-ffmpeg/ffprobe", "-v", "error", "-show_streams", "-show_format",
-                        "-show_entries", "packet=pts_time,flags", "-read_intervals", "%+#1", "-of", "json", "/probe/" + path.name],
+                        "-show_entries", "packet=stream_index,pts_time,duration_time,flags", "-of", "json", "/probe/" + path.name],
                        capture_output=True, text=True)
     return json.loads(r.stdout or "{}")
 
@@ -293,18 +293,32 @@ def switch(base, from_segs, to_segs, k, tolerance=0.15):
     va = [s for s in pb.get("streams", []) if s.get("codec_type") == "video"]
     aa = [(s.get("codec_name"), s.get("channels"), s.get("sample_rate")) for s in pa.get("streams", []) if s.get("codec_type") == "audio"]
     ab = [(s.get("codec_name"), s.get("channels"), s.get("sample_rate")) for s in pb.get("streams", []) if s.get("codec_type") == "audio"]
-    key = any("K" in (p.get("flags") or "") for p in (pb.get("packets") or [])[:1])
+    def stream(pr, kind):
+        return next((x["index"] for x in pr.get("streams", []) if x.get("codec_type") == kind), None)
 
-    def av(pr):   # début de l'image moins début du son dans le segment (synchro image / son)
-        st = {x.get("codec_type"): float(x.get("start_time") or 0) for x in pr.get("streams", []) if x.get("start_time") not in (None, "N/A")}
-        return st["video"] - st["audio"] if "video" in st and "audio" in st else None
-    da, db = av(pa), av(pb)
+    def packets(pr, kind):
+        i = stream(pr, kind)
+        return [p for p in pr.get("packets") or [] if p.get("stream_index") == i and p.get("pts_time") not in (None, "N/A")]
+    vb = packets(pb, "video")
+    key = bool(vb) and "K" in (min(vb, key=lambda p: float(p["pts_time"])).get("flags") or "")
+
+    # son continu au changement : le son du nouveau segment commence là où finit celui de l'ancien (les lecteurs placent
+    # image et son par leurs horodatages, ceux du fichier d'origine dans toutes les qualités : un trou s'entendrait, un
+    # chevauchement est absorbé)
+    def audio_span(pr):
+        ps = packets(pr, "audio")
+        if not ps:
+            return None
+        ends = [float(p["pts_time"]) + float(p.get("duration_time") or 0) for p in ps]
+        return min(float(p["pts_time"]) for p in ps), max(ends)
+    sa, sb = audio_span(pa), audio_span(pb)
+    gap = None if not (sa and sb) else sb[0] - sa[1]
     report.setdefault("switches", []).append({"k": k, "end_a": round(end_a, 3), "start_b": round(start_b, 3), "audio_a": aa, "audio_b": ab})
     check(abs(start_b - end_a) <= tolerance, f"changement de qualité au segment {k + 1} : fin {end_a:.3f} s, suite à {start_b:.3f} s")
     check(bool(va) and key, f"segment {k + 1} de la nouvelle qualité : commence par une image clé")
     check(aa == ab and bool(aa), f"segment {k + 1} : même audio des deux côtés {aa}")
-    check(da is not None and db is not None and abs(da - db) <= 0.04,
-          f"segment {k + 1} : synchro image / son identique des deux côtés ({da if da is None else round(da * 1000)} ms, {db if db is None else round(db * 1000)} ms)")
+    check(gap is not None and gap <= 0.05,
+          f"segment {k + 1} : son continu au changement de qualité (écart {gap if gap is None else round(gap * 1000)} ms : négatif = chevauchement)")
 
 
 # ------------------------------------------------------------------ lecture dans un vrai navigateur
@@ -330,6 +344,11 @@ def link(kbps):
     subprocess.run(tc + ["del", "dev", "eth0", "root"], capture_output=True)
     if kbps > 0:
         subprocess.run(tc + ["add", "dev", "eth0", "root", "tbf", "rate", f"{kbps}kbit", "burst", "32kbit", "latency", "300ms"], check=True)
+
+
+def clean(text: str) -> str:
+    """Texte affiché sans les marques invisibles (jellyfin-web ajoute une marque de sens d'écriture, U+200E)."""
+    return re.sub(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", text or "").strip()
 
 
 def browser_run(item, label: str, profile=None, length=130, shaped=False):
@@ -408,7 +427,7 @@ def browser_run(item, label: str, profile=None, length=130, shaped=False):
         # instants à moins d'une demi-seconde d'un changement de ligne (relevé toutes les secondes)
         subs = [x for x in samples if x.get("sub")]
         bad = [(round(x["t"], 1), x["sub"]) for x in subs
-               if (x["t"] % 5) < 3.5 and (x["t"] % 5) > 0.5 and x["sub"] != f"Subtitle line {int(x['t'] // 5) + 1}"]
+               if (x["t"] % 5) < 3.5 and (x["t"] % 5) > 0.5 and clean(x["sub"]) != f"Subtitle line {int(x['t'] // 5) + 1}"]
         res["subtitles"] = {"shown": len(subs), "wrong": bad[:5], "wrong_count": len(bad)}
         res["overlay"] = page.evaluate("() => { const p = document.querySelector('.abr-overlay'); return p && p.style.display !== 'none' ? p.textContent : null; }")
         page.screenshot(path=str(OUT / f"lecture-{label}.png"))
