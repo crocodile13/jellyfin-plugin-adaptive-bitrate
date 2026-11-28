@@ -85,6 +85,7 @@ public sealed class Governor
 
     private static readonly object StartupLock = new();
     private static double _startup = double.NaN;
+    private static readonly Queue<double> StartupSamples = new();
 
     private readonly IReadOnlyList<int> _bandwidth;   // débit annoncé de chaque marche (bits/s), du plus haut au plus bas
     private readonly Queue<double> _rates = new();
@@ -135,6 +136,20 @@ public sealed class Governor
         lock (StartupLock)
         {
             _startup = double.IsNaN(_startup) ? seconds : (0.7 * _startup) + (0.3 * seconds);
+            StartupSamples.Enqueue(seconds);
+            while (StartupSamples.Count > 10)
+            {
+                StartupSamples.Dequeue();
+            }
+        }
+    }
+
+    /// <summary>Dernières mesures brutes du démarrage d'un encodage (secondes, la plus ancienne d'abord ; diagnostic).</summary>
+    public static double[] RecentStartups()
+    {
+        lock (StartupLock)
+        {
+            return StartupSamples.ToArray();
         }
     }
 
@@ -144,6 +159,7 @@ public sealed class Governor
         lock (StartupLock)
         {
             _startup = double.NaN;
+            StartupSamples.Clear();
         }
     }
 

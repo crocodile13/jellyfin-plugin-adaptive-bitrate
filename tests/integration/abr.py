@@ -474,7 +474,7 @@ def browser_checks(item):
     check(sts.get("shown", 0) >= 20 and sts.get("wrong_count", 1) == 0, f"pilotage par le serveur : sous-titres synchrones ({sts})")
     m = ss.get("measure") or {}
     check(isinstance(ss.get("startup"), (int, float)) and 0 < ss["startup"] < 30,
-          f"démarrage d'un encodage mesuré sur le serveur aux changements de qualité ({ss.get('startup')} s)")
+          f"démarrage d'un encodage mesuré sur le serveur aux changements de qualité ({ss.get('startup')} s ; mesures {ss.get('startup_samples')})")
     check(isinstance(m.get("margin"), (int, float)) and 1.1 <= m["margin"] <= 2.0 and 6 <= (m.get("minChange") or 0) <= 30 and 1 <= (m.get("minSamples") or 0) <= 5,
           f"pilotage automatique : valeurs appliquées dans leurs bornes (marge {m.get('margin')}, écart {m.get('minChange')} s, {m.get('minSamples')} segments)")
     check(changes(ss) <= changes(sp), f"pilotage par le serveur : changements de qualité {changes(ss)} contre {changes(sp)} sans")
@@ -500,7 +500,7 @@ def last_session() -> dict:
     """Dernière lecture vue par le serveur : qualités servies et mesure."""
     st = http("GET", "/AdaptiveBitrate/Status", query={"lang": "fr"})
     s = (st.get("sessions") or [{}])[0]
-    return {"steps": [x.get("kbps") for x in s.get("steps") or []], "down": s.get("down"), "up": s.get("up"), "measure": s.get("server"), "startup": st.get("startup")}
+    return {"steps": [x.get("kbps") for x in s.get("steps") or []], "down": s.get("down"), "up": s.get("up"), "measure": s.get("server"), "startup": st.get("startup"), "startup_samples": st.get("startupSamples")}
 
 
 def write_report():

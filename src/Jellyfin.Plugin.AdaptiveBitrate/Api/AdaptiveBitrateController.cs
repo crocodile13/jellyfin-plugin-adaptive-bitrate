@@ -111,6 +111,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             compatible = !HlsFilter.Incompatible,
             lastSkip = HlsFilter.LastSkip is { } s ? Texts.T(s, lang) : null,
             startup = Governor.Startup is double st ? Math.Round(st, 1) : (double?)null,
+            startupSamples = Governor.RecentStartups().Select(x => Math.Round(x, 3)),
             sessions = _log.Recent().Select(x => new
             {
                 title = x.Title, client = x.Client, offered = x.Offered, down = x.Down, up = x.Up,
