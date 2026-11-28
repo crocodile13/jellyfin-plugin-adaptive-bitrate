@@ -457,7 +457,8 @@ def browser_checks(item):
     configure(Enabled=True, Scope="All", PreferAdaptive=True, MaxRungs=4, ServerControl=False, DebugOverlay="Off")
     yoyo_player = browser_run(item, "yoyo-lecteur", YOYO, 110, shaped=True)
     yoyo_player["server"] = last_session()
-    configure(ServerControl=True, HoldAfterDownSeconds=30, MinChangeSeconds=10, AnticipateDown=True, DebugOverlay="Admins")
+    # réactivité automatique (0 = automatique : écart, marge, segments mesurés ; moment de la descente anticipée)
+    configure(ServerControl=True, HoldAfterDownSeconds=30, MinChangeSeconds=0, Margin=0, MinSamples=0, AnticipateDown=True, DebugOverlay="Admins")
     yoyo_server = browser_run(item, "yoyo-serveur", YOYO, 110, shaped=True)
     yoyo_server["server"] = last_session()
     configure(ServerControl=False)
@@ -471,6 +472,11 @@ def browser_checks(item):
     check(yoyo_server["playbackinfo"] == 0, "pilotage par le serveur : aucun redémarrage de la lecture")
     sts = yoyo_server.get("subtitles") or {}
     check(sts.get("shown", 0) >= 20 and sts.get("wrong_count", 1) == 0, f"pilotage par le serveur : sous-titres synchrones ({sts})")
+    m = ss.get("measure") or {}
+    check(isinstance(ss.get("startup"), (int, float)) and 0 < ss["startup"] < 30,
+          f"démarrage d'un encodage mesuré sur le serveur aux changements de qualité ({ss.get('startup')} s)")
+    check(isinstance(m.get("margin"), (int, float)) and 1.1 <= m["margin"] <= 2.0 and 6 <= (m.get("minChange") or 0) <= 30 and 1 <= (m.get("minSamples") or 0) <= 5,
+          f"pilotage automatique : valeurs appliquées dans leurs bornes (marge {m.get('margin')}, écart {m.get('minChange')} s, {m.get('minSamples')} segments)")
     check(changes(ss) <= changes(sp), f"pilotage par le serveur : changements de qualité {changes(ss)} contre {changes(sp)} sans")
     check(yoyo_server["stall_s"] <= yoyo_player["stall_s"] + 2,
           f"pilotage par le serveur : coupures {yoyo_server['stall_s']} s contre {yoyo_player['stall_s']} s sans (réseau en yoyo)")
@@ -494,7 +500,7 @@ def last_session() -> dict:
     """Dernière lecture vue par le serveur : qualités servies et mesure."""
     st = http("GET", "/AdaptiveBitrate/Status", query={"lang": "fr"})
     s = (st.get("sessions") or [{}])[0]
-    return {"steps": [x.get("kbps") for x in s.get("steps") or []], "down": s.get("down"), "up": s.get("up"), "measure": s.get("server")}
+    return {"steps": [x.get("kbps") for x in s.get("steps") or []], "down": s.get("down"), "up": s.get("up"), "measure": s.get("server"), "startup": st.get("startup")}
 
 
 def write_report():
