@@ -93,5 +93,12 @@
   "démarrage d'un encodage {0} s": "encoder start {0} s",
   "{0} Mb/s livrés au lecteur": "{0} Mb/s delivered to the player",
   "Encodage": "Encoding",
-  "{0} s d'attente par segment de {1} s": "{0} s wait per {1} s segment"
+  "{0} s d'attente par segment de {1} s": "{0} s wait per {1} s segment",
+  "Encodage de Jellyfin : accélération matérielle {0}": "Jellyfin encoding: hardware acceleration {0}",
+  "Encodage de Jellyfin : sans accélération matérielle (chaque qualité plus basse est encodée par le processeur)": "Jellyfin encoding: no hardware acceleration (every lower quality is encoded by the processor)",
+  "limitation de l'encodage après {0} s": "encoding throttled after {0} s",
+  "sans limitation de l'encodage": "encoding not throttled",
+  "segments supprimés après {0} s": "segments deleted after {0} s",
+  "segments gardés": "segments kept",
+  "segments fMP4 : le serveur mesure sans piloter": "fMP4 segments: the server measures without steering"
 }

@@ -186,7 +186,7 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             executed.Result = new FileContentResult(Encoding.UTF8.GetBytes(merged), original.ContentType);
             var offers = MasterPlaylist.Variants(merged).Select(v => new Offer((int)(v.Bandwidth / 1000), MasterPlaylist.Attribute(v.Info, "RESOLUTION") ?? string.Empty)).ToList();
             var session = Arg<string>(context, "playSessionId") ?? string.Empty;
-            _log.Started(session, TitleOf(context), ClientOf(context), offers);
+            _log.Started(session, TitleOf(context), ClientOf(context), offers, UserOf(context));
             _sessions.Start(session, known.OrderByDescending(x => x.Bandwidth).ToList());
         }
         catch (Exception ex)
@@ -275,11 +275,21 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
             }
 
             double seconds = Arg<long>(context, "actualSegmentLengthTicks") / 1e7;
+            // segments fMP4 : chaque encodage a son propre en-tête d'initialisation (-1.mp4), que le lecteur ne recharge
+            // qu'en changeant lui-même de qualité ; un segment d'une autre qualité derrière cet en-tête casserait l'image.
+            // Le serveur ne pilote donc que les segments TS (paramètres de l'image dans chaque segment) ; en fMP4, il mesure.
+            var options = cfg.GovernorOptions();
+            if (!string.Equals(Arg<string>(context, "container"), "ts", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Enabled = false;
+                session.Pilotable = false;
+            }
+
             Decision decision;
             bool fresh;
             lock (session)
             {
-                decision = session.Governor.Decide(requested, Arg<int>(context, "segmentId"), seconds > 0 ? seconds : 3, Now(), cfg.GovernorOptions());
+                decision = session.Governor.Decide(requested, Arg<int>(context, "segmentId"), seconds > 0 ? seconds : 3, Now(), options);
                 fresh = decision.Rung != session.LastServed;
                 session.LastServed = decision.Rung;
             }
@@ -352,8 +362,8 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
         if (Arg<Guid>(context, "itemId") is var id && id != Guid.Empty && _library.GetItemById(id) is BaseItem item)
         {
             var sourceId = Arg<string>(context, "mediaSourceId");
-            var source = _sources.GetStaticMediaSources(item, false).FirstOrDefault(s => string.Equals(s.Id, sourceId, StringComparison.OrdinalIgnoreCase))
-                ?? _sources.GetStaticMediaSources(item, false).FirstOrDefault();
+            var all = _sources.GetStaticMediaSources(item, false);
+            var source = all.FirstOrDefault(s => string.Equals(s.Id, sourceId, StringComparison.OrdinalIgnoreCase)) ?? all.FirstOrDefault();
             var video = source?.MediaStreams?.FirstOrDefault(s => s.Type == MediaStreamType.Video);
             if (video is not null)
             {
@@ -367,6 +377,8 @@ public sealed class HlsFilter : IAsyncActionFilter, IAsyncResultFilter, IOrdered
 
     private string TitleOf(ActionExecutingContext context)
         => Arg<Guid>(context, "itemId") is var id && id != Guid.Empty && _library.GetItemById(id) is BaseItem item ? item.Name ?? string.Empty : string.Empty;
+
+    private static string UserOf(ActionExecutingContext context) => context.HttpContext.User.FindFirst("Jellyfin-UserId")?.Value ?? string.Empty;
 
     private static string ClientOf(ActionExecutingContext context) => context.HttpContext.User.FindFirst("Jellyfin-Client")?.Value ?? string.Empty;
 

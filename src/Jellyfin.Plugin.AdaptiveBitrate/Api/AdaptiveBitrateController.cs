@@ -5,6 +5,8 @@ using AdaptiveBitrate.Core;
 using Jellyfin.Data;
 using Jellyfin.Plugin.AdaptiveBitrate.Configuration;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,12 +21,36 @@ public sealed class AdaptiveBitrateController : ControllerBase
     private readonly SwitchLog _log;
     private readonly Sessions _sessions;
     private readonly IUserManager _users;
+    private readonly IServerConfigurationManager _config;
 
-    public AdaptiveBitrateController(SwitchLog log, Sessions sessions, IUserManager users)
+    public AdaptiveBitrateController(SwitchLog log, Sessions sessions, IUserManager users, IServerConfigurationManager config)
     {
         _log = log;
         _sessions = sessions;
         _users = users;
+        _config = config;
+    }
+
+    /// <summary>
+    /// Réglages d'encodage de Jellyfin qui pèsent sur l'échelle : accélération matérielle (chaque qualité plus basse est
+    /// encodée ; sans carte graphique, par le processeur), limitation de l'encodage et suppression des segments (le
+    /// mode automatique s'y adapte : il mesure le démarrage d'un encodage et l'avance du lecteur, ne lit pas ces réglages).
+    /// </summary>
+    private object? EncodingSettings()
+    {
+        try
+        {
+            var e = _config.GetEncodingOptions();
+            return new
+            {
+                hardware = e.HardwareAccelerationType.ToString(), throttling = e.EnableThrottling, throttleDelay = e.ThrottleDelaySeconds,
+                segmentDeletion = e.EnableSegmentDeletion, segmentKeep = e.SegmentKeepSeconds,
+            };
+        }
+        catch (Exception)
+        {
+            return null;   // forme inattendue : la page n'affiche rien
+        }
     }
 
     /// <summary>Mesure du serveur pour une lecture (débit d'envoi, avance du lecteur, décisions), ou null.</summary>
@@ -42,7 +68,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             return new
             {
                 rateKbps = g.Rate is double r ? (int)(r / 1000) : (int?)null, lead = g.Lead is double l ? Math.Round(l, 1) : (double?)null,
-                served = g.Current, held = g.Held, anticipated = g.Anticipated, samples = g.Samples,
+                served = g.Current, held = g.Held, anticipated = g.Anticipated, samples = g.Samples, pilotable = s.Pilotable,
                 paced = g.Paced, skipped = g.Skipped, segment = Math.Round(g.SegmentSeconds, 1),
                 encoderWait = g.EncoderLoad is double w ? Math.Round(w * g.SegmentSeconds, 2) : (double?)null,
                 // valeurs réellement appliquées (réglées, ou automatiques pour cette lecture)
@@ -71,7 +97,8 @@ public sealed class AdaptiveBitrateController : ControllerBase
     /// <summary>
     /// Surcouche de diagnostic : la lecture du compte connecté (qualités proposées, changements) et les textes de la
     /// surcouche ; refusé (403) si la surcouche n'est pas ouverte à ce compte. Une lecture d'un autre compte n'est jamais
-    /// renvoyée : seule celle dont l'identifiant est donné, et seulement si elle est connue du journal.
+    /// renvoyée (sauf à un administrateur) : seulement celle dont l'identifiant est donné, connue du journal et lancée par
+    /// ce compte.
     /// </summary>
     [HttpGet("Session")]
     [Authorize]
@@ -86,7 +113,8 @@ public sealed class AdaptiveBitrateController : ControllerBase
             return StatusCode(403);
         }
 
-        var s = string.IsNullOrEmpty(playSessionId) ? null : _log.Get(playSessionId);
+        bool own = !string.IsNullOrEmpty(playSessionId) && (admin || (Guid.TryParse(_log.Owner(playSessionId), out var owner) && owner == g));
+        var s = own ? _log.Get(playSessionId!) : null;
         return Ok(new
         {
             texts = Texts.Dictionary(lang),
@@ -114,6 +142,7 @@ public sealed class AdaptiveBitrateController : ControllerBase
             lastSkip = HlsFilter.LastSkip is { } s ? Texts.T(s, lang) : null,
             startup = Governor.Startup is double st ? Math.Round(st, 1) : (double?)null,
             startupSamples = Governor.RecentStartups().Select(x => Math.Round(x, 3)),
+            encoding = EncodingSettings(),
             sessions = _log.Recent().Select(x => new
             {
                 title = x.Title, client = x.Client, offered = x.Offered, down = x.Down, up = x.Up,

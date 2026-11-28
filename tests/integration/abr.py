@@ -478,6 +478,7 @@ def browser_checks(item):
     sts = yoyo_server.get("subtitles") or {}
     check(sts.get("shown", 0) >= 20 and sts.get("wrong_count", 1) == 0, f"pilotage par le serveur : sous-titres synchrones ({sts})")
     m = ss.get("measure") or {}
+    check(m.get("pilotable") is not None, f"segments du navigateur : {'TS, le serveur pilote' if m.get('pilotable') else 'fMP4, le serveur mesure sans piloter'}")
     check(isinstance(ss.get("startup"), (int, float)) and 0 < ss["startup"] < 30,
           f"démarrage d'un encodage mesuré sur le serveur aux changements de qualité ({ss.get('startup')} s ; mesures {ss.get('startup_samples')})")
     check(isinstance(m.get("margin"), (int, float)) and 1.1 <= m["margin"] <= 2.0 and 6 <= (m.get("minChange") or 0) <= 30 and 1 <= (m.get("minSamples") or 0) <= 5,

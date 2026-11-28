@@ -140,6 +140,7 @@
             if (typeof m.encoderWait === 'number' && m.encoderWait >= 0.05) {
                 line(body, tr('Encodage'), trf('{0} s d\'attente par segment de {1} s', num(m.encoderWait, 2), num(m.segment, 1)));
             }
+            if (m.pilotable === false) { line(body, tr('Décisions du serveur'), tr('segments fMP4 : le serveur mesure sans piloter')); }
             if (typeof m.margin === 'number') {
                 line(body, tr('Réglages appliqués'), trf('marge {0} · écart {1} s · {2} segments', num(m.margin, 2), num(m.minChange, 1), m.minSamples)
                     + (typeof m.startup === 'number' ? ' · ' + trf('démarrage d\'un encodage {0} s', num(m.startup, 1)) : ''));

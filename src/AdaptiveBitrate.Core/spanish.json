@@ -93,5 +93,12 @@
   "démarrage d'un encodage {0} s": "arranque de codificación {0} s",
   "{0} Mb/s livrés au lecteur": "{0} Mb/s entregados al reproductor",
   "Encodage": "Codificación",
-  "{0} s d'attente par segment de {1} s": "{0} s de espera por segmento de {1} s"
+  "{0} s d'attente par segment de {1} s": "{0} s de espera por segmento de {1} s",
+  "Encodage de Jellyfin : accélération matérielle {0}": "Codificación de Jellyfin: aceleración por hardware {0}",
+  "Encodage de Jellyfin : sans accélération matérielle (chaque qualité plus basse est encodée par le processeur)": "Codificación de Jellyfin: sin aceleración por hardware (cada calidad inferior la codifica el procesador)",
+  "limitation de l'encodage après {0} s": "codificación limitada tras {0} s",
+  "sans limitation de l'encodage": "codificación sin limitar",
+  "segments supprimés après {0} s": "segmentos borrados tras {0} s",
+  "segments gardés": "segmentos conservados",
+  "segments fMP4 : le serveur mesure sans piloter": "segmentos fMP4: el servidor mide sin pilotar"
 }

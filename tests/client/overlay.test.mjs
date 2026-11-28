@@ -68,6 +68,15 @@ await test('surcouche : qualité en cours, débit reçu, qualités proposées, t
     assert.equal(p.querySelector('b'), null, 'rien n\'est inséré comme du HTML');
 });
 
+await test('segments fMP4 : la surcouche dit que le serveur mesure sans piloter', async () => {
+    const { d } = page({ server: { rateKbps: 9100, lead: 14.2, held: 0, anticipated: 0, pilotable: false, margin: 1.25, minChange: 7.5, minSamples: 2, startup: null } });
+    await wait(1200);
+    await wait(1100);
+    const text = d.querySelector('.abr-overlay').textContent;
+    assert.match(text, /segments fMP4 : le serveur mesure sans piloter/);
+    assert.doesNotMatch(text, /démarrage d'un encodage/);
+});
+
 await test('refusée par le serveur (403) : rien ne s\'affiche', async () => {
     const { d } = page({ denied: true });
     await wait(2300);

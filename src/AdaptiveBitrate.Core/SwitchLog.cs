@@ -55,12 +55,13 @@ public sealed class SwitchLog
         public string Session = string.Empty;
         public string Title = string.Empty;
         public string Client = string.Empty;
+        public string User = string.Empty;
         public List<Offer> Offers = new();
         public List<Switch> Steps = new();
     }
 
-    /// <summary>Une playlist maîtresse a été servie avec ces qualités.</summary>
-    public void Started(string session, string title, string client, IReadOnlyList<Offer> offers)
+    /// <summary>Une playlist maîtresse a été servie avec ces qualités, pour le compte <paramref name="user"/>.</summary>
+    public void Started(string session, string title, string client, IReadOnlyList<Offer> offers, string user = "")
     {
         if (string.IsNullOrEmpty(session))
         {
@@ -82,6 +83,7 @@ public sealed class SwitchLog
 
             e.Title = title;
             e.Client = client;
+            e.User = user;
             e.Offers = offers.Take(20).ToList();
         }
     }
@@ -120,6 +122,15 @@ public sealed class SwitchLog
         lock (_lock)
         {
             return Find(session) is { } e ? Summary(e) : null;
+        }
+    }
+
+    /// <summary>Compte qui a lancé la lecture (vide si inconnu), ou null si elle n'est pas dans le journal.</summary>
+    public string? Owner(string session)
+    {
+        lock (_lock)
+        {
+            return Find(session)?.User;
         }
     }
 

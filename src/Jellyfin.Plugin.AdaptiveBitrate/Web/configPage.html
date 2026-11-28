@@ -240,6 +240,15 @@
                             st.textContent = trf('Démarrage d\'un encodage sur ce serveur : {0} s (mesuré aux changements de qualité).', num(s.startup, 1));
                             h.appendChild(st);
                         }
+                        if (s.encoding) {
+                            var en = document.createElement('div');
+                            var e = s.encoding, hw = e.hardware && e.hardware.toLowerCase() !== 'none';
+                            en.className = hw ? '' : 'abr-warn';
+                            en.textContent = (hw ? trf('Encodage de Jellyfin : accélération matérielle {0}', e.hardware) : tr('Encodage de Jellyfin : sans accélération matérielle (chaque qualité plus basse est encodée par le processeur)'))
+                                + ' · ' + (e.throttling ? trf('limitation de l\'encodage après {0} s', e.throttleDelay) : tr('sans limitation de l\'encodage'))
+                                + ' · ' + (e.segmentDeletion ? trf('segments supprimés après {0} s', e.segmentKeep) : tr('segments gardés'));
+                            h.appendChild(en);
+                        }
                         var box = $('abrSessions');
                         box.textContent = '';
                         if (!s.sessions || !s.sessions.length) {
@@ -257,7 +266,7 @@
                             var r = t.insertRow();
                             cell(r, x.title); cell(r, x.client); cell(r, x.offered); cell(r, x.down); cell(r, x.up);
                             cell(r, x.steps.map(function (p) { return p.kbps > 0 ? p.kbps : tr('origine'); }).join(' → '));
-                            cell(r, x.server && x.server.rateKbps !== null ? trf('{0} kb/s, {1} remontées retenues, {2} descentes anticipées', x.server.rateKbps, x.server.held, x.server.anticipated) : '—');
+                            cell(r, x.server && x.server.rateKbps !== null ? trf('{0} kb/s, {1} remontées retenues, {2} descentes anticipées', x.server.rateKbps, x.server.held, x.server.anticipated) + (x.server.pilotable === false ? ' · ' + tr('segments fMP4 : le serveur mesure sans piloter') : '') : '—');
                             cell(r, x.server ? trf('marge {0} · écart {1} s · {2} segments', num(x.server.margin, 2), num(x.server.minChange, 1), x.server.minSamples) : '—');
                         });
                         box.appendChild(t);
